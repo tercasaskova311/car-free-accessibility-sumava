@@ -1,0 +1,8 @@
+data/# Data files
+data/
+*.csv
+*.geojson
+*.shp
+*.gpkg
+results/
+path/to/large-file
