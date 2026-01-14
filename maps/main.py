@@ -7,6 +7,7 @@ from config import Config
 from loader import DataLoader
 from network_layer import NetworkBuilder
 from base_map import BaseLayer
+from bike_layer import BikeLayer
 
 
 def print_header():

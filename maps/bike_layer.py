@@ -7,7 +7,7 @@ from pathlib import Path
 # RIDE LAYERS
 # ============================================================================
 
-class RideLayers:
+class BideLayers:
     """Create ride visualization layers"""
     
     @staticmethod
