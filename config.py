@@ -8,7 +8,7 @@ class Config:
     OUTPUT_DIR = Path('maps')
 
     STUDY_AREA = 'data/sumava_data/sumava_aoi.gpkg'
-    STRAVA_RIDES = 'data/strava/strava_routes_sumava.gpkg'
+    STRAVA_RIDES = 'data/strava/strava_routes_sumava.geojson'
 
     CLEANED_RIDES = STRAVA_DIR / 'rides_cleaned.gpkg'
     TRAIL_NETWORK = STRAVA_DIR / 'trail_network.gpkg'

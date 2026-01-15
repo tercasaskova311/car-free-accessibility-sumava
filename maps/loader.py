@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import Config
 from bike_layer import BikeLayers
-from analysis_layer import AnalysisLayers
+from heatmap import HeatMapLayer
 
 class DataLoader:
     @staticmethod

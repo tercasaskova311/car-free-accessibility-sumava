@@ -39,31 +39,30 @@ class HeatMapLayer:
     @staticmethod
     def add_route_clusters(m, rides, distance_threshold=1000):
         """
-        Cluster rides by start-point proximity using DBSCAN.
-        distance_threshold = max distance (meters) between starts
+        Cluster rides by start-point proximity with CLEAR popularity labels
         """
-
-        # 1️⃣ Keep only rides with start points
+        # Keep only rides with valid start points
         rides_valid = rides[rides["start_point"].notna()].copy()
         if rides_valid.empty:
+            print("⚠️ No valid start points for clustering")
             return
 
-        # 2️⃣ Convert start points to GeoSeries
+        # Convert to GeoSeries
         start_points = gpd.GeoSeries(
             [Point(p) for p in rides_valid["start_point"]],
             crs=rides.crs
         )
 
-        # 3️⃣ Project to meters
+        # Project to meters for accurate distance calculation
         start_points_proj = start_points.to_crs("EPSG:32633")
 
-        # 4️⃣ Extract coordinates
+        # Extract coordinates
         coords = np.column_stack([
             start_points_proj.x,
             start_points_proj.y
         ])
 
-        # 5️⃣ DBSCAN clustering
+        # DBSCAN clustering
         db = DBSCAN(
             eps=distance_threshold,
             min_samples=3,
@@ -71,27 +70,52 @@ class HeatMapLayer:
         ).fit(coords)
 
         rides_valid["cluster"] = db.labels_
-
-        # 6️⃣ Attach clusters back
         rides["cluster"] = rides_valid["cluster"]
 
-        # 7️⃣ Visualization
+        # Get cluster popularity ranking
+        cluster_counts = rides_valid[rides_valid["cluster"] != -1]["cluster"].value_counts()
+        
+        # Map cluster IDs to popularity labels
+        cluster_labels = {}
+        sorted_clusters = cluster_counts.sort_values(ascending=False).index.tolist()
+        
+        popularity_names = ["Most popular rides", "Popular", "Moderate", " Enjoy trails for yourself"]
+        
+        for rank, cluster_id in enumerate(sorted_clusters):
+            count = cluster_counts[cluster_id]
+            if rank < len(popularity_names):
+                label = popularity_names[rank]
+            else:
+                label = f"Zone {rank + 1}"
+            
+            cluster_labels[cluster_id] = {
+                'name': label,
+                'count': count,
+                'rank': rank + 1
+            }
+
+        # Visualization colors
         colors = [
-            "#3498db", "#2ecc71", "#f39c12",
-            "#e74c3c", "#9b59b6", "#1abc9c"
+            "#e74c3c",  # Red - hottest
+            "#f39c12",  # Orange
+            "#3498db",  # Blue
+            "#2ecc71",  # Green
+            "#9b59b6",  # Purple
+            "#1abc9c"   # Teal
         ]
 
-        for cluster_id in sorted(rides_valid["cluster"].unique()):
-            if cluster_id == -1:
-                continue  # noise
-
+        for cluster_id in sorted_clusters:
             subset = rides_valid[rides_valid["cluster"] == cluster_id]
+            
+            label_info = cluster_labels[cluster_id]
+            layer_name = f"{label_info['name']} ({label_info['count']} rides)"
+            
             layer = folium.FeatureGroup(
-                name=f"Area {cluster_id} ({len(subset)} rides)",
-                show=False
+                name=layer_name,
+                show=False  # Hidden by default to avoid clutter
             )
 
-            color = colors[cluster_id % len(colors)]
+            color = colors[label_info['rank'] - 1] if label_info['rank'] <= len(colors) else colors[-1]
 
             for _, ride in subset.iterrows():
                 folium.GeoJson(
@@ -100,12 +124,10 @@ class HeatMapLayer:
                         "color": c,
                         "weight": 3,
                         "opacity": 0.7
-                    }
+                    },
+                    tooltip=f"{label_info['name']} - {ride.get('distance_km', 0):.1f}km"
                 ).add_to(layer)
 
             layer.add_to(m)
 
-        print(
-            f"✓ Created {len(set(db.labels_)) - (1 if -1 in db.labels_ else 0)} clusters "
-            f"from {len(rides_valid)} rides"
-        )
+        print(f"✓ Created {len(sorted_clusters)} popularity zones from {len(rides_valid)} rides")

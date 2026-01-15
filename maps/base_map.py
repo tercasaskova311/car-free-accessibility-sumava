@@ -61,18 +61,18 @@ class BaseLayers:
         ).add_to(m)
     
     @staticmethod
-    def add_interactive_network(m, network):
-        layer = folium.FeatureGroup(
-            name='Trail Network (Click for routes!)',
-            show=True
-        )
-        
+    def add_trail_network_analysis(m, network):
+        """
+        Add the trail network as a SINGLE always-visible layer
+        This replaces the non-working toggle version
+        """
         thresholds = Config.TRAFFIC_THRESHOLDS
-        network_geojson = network.__geo_interface__
         
-        #style and popup functions
-        def style_function(feature):
-            ride_count = feature['properties']['ride_count']
+        print("Adding trail network segments...")
+        
+        for idx, segment in network.iterrows():
+            ride_count = segment['ride_count']
+            rides_info = segment.get('rides', [])
             
             # Color by popularity
             if ride_count == 0:
@@ -87,35 +87,8 @@ class BaseLayers:
             else:
                 color = Config.COLORS['high_traffic']
                 weight = 5
-            return {
-                'color': color,
-                'weight': weight,
-                'opacity': 0.8
-            }
-
-            def highlight_function(feature):
-                return {
-                    'color': Config.COLORS['highlight'],
-                    'weight': 6,
-                    'opacity': 1.0
-                }
-        
-            #entire network as single GeoJson - in order to speedup...
-            for idx, segment in network.iterrows():
-                ride_count = segment['ride_count']
-                rides_info = segment['rides']
-                
-                # Determine color
-                if ride_count == 0:
-                    color = Config.COLORS['no_traffic']
-                elif ride_count <= thresholds['low']:
-                    color = Config.COLORS['low_traffic']
-                elif ride_count <= thresholds['medium']:
-                    color = Config.COLORS['medium_traffic']
-                else:
-                    color = Config.COLORS['high_traffic']
             
-            #popup
+            # Build popup
             popup_html = f"""
             <div style="font-family: Arial; min-width: 300px; max-height: 400px; overflow-y: auto;">
                 <h4 style="margin: 0 0 10px 0; color: #2c3e50;">
@@ -128,24 +101,23 @@ class BaseLayers:
                 <div style="font-size: 12px;">
             """
             
-            for i, ride_info in enumerate(rides_info, 1):
+            for i, ride_info in enumerate(rides_info[:10], 1):  # Limit to first 10
                 popup_html += f"""
                 <div style="margin: 8px 0; padding: 8px; background: #f8f9fa; 
                             border-radius: 4px; border-left: 3px solid {color};">
-                    <b>{i}. {ride_info['name']}</b><br>
+                    <b>{i}. {ride_info.get('name', f'Ride {ride_info.get("activity_id", "?")}'[:30])}</b><br>
                     <span style="color: #7f8c8d;">
-                         {ride_info['length_km']:.1f} km | 🔄 {ride_info['route_type']}
+                         {ride_info.get('distance_km', 0):.1f} km
                     </span>
                 </div>
                 """
+            
             if len(rides_info) > 10:
                 popup_html += f"<p style='color: #7f8c8d; font-size: 11px;'>...and {len(rides_info) - 10} more routes</p>"
             
             popup_html += "</div></div>"
-            geom_dict = segment.geometry.__geo_interface__
-
             
-            # Add to map
+            # Add to map (no layer group - always visible)
             folium.GeoJson(
                 segment.geometry,
                 style_function=lambda x, c=color, w=weight: {
@@ -160,14 +132,12 @@ class BaseLayers:
                 },
                 popup=folium.Popup(popup_html, max_width=350),
                 tooltip=f"🚴 {ride_count} routes (click for details)"
-            ).add_to(layer)
+            ).add_to(m)
             
-            # Progress
             if (idx + 1) % 50 == 0:
                 print(f"   Added {idx + 1}/{len(network)} segments...")
 
-        layer.add_to(m)
-        print(f"   ✓ Added {len(network)} interactive segments")
+        print(f"✓ Added {len(network)} interactive trail segments (always visible)")
     
     @staticmethod
     def add_instructions(m):
