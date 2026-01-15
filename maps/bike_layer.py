@@ -2,12 +2,15 @@ import folium
 from folium.plugins import MarkerCluster, HeatMap, MiniMap, Fullscreen
 import geopandas as gpd
 import pandas as pd
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config import Config
 # ============================================================================
 # RIDE LAYERS
 # ============================================================================
 
-class BideLayers:
+class BikeLayers:
     """Create ride visualization layers"""
     
     @staticmethod

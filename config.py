@@ -1,4 +1,4 @@
-from pathlib impot Path
+from pathlib import Path
 
 class Config:
 
@@ -17,7 +17,7 @@ class Config:
     # Map settings
     DEFAULT_ZOOM = 11
     MIN_ZOOM = 8
-    MAX_ZOOM = 
+    MAX_ZOOM = 1
     
     # === NETWORK SETTINGS ===
     SNAP_TOLERANCE = 50  # meters - merge lines within this distance

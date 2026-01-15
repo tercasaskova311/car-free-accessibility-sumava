@@ -2,9 +2,11 @@ import folium
 from folium.plugins import MarkerCluster, HeatMap, MiniMap, Fullscreen
 import geopandas as gpd
 import pandas as pd
+import sys
 from pathlib import Path
-from config import Config 
-from bike_layer import RideLayers
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config import Config
+from bike_layer import BikeLayers
 from analysis_layer import AnalysisLayers
 
 class DataLoader:
@@ -38,9 +40,10 @@ class DataLoader:
         return rides
     
     @staticmethod
-    def calcute_km(rides):
+    def calculate_km(rides):
         # Calculate length in km
-        rides['length_km'] = rides.geometry.length / 1000
+        rides_proj = rides.to_crs("EPSG:32633")
+        rides["length_km"] = rides_proj.geometry.length / 1000
         
         # Helper functions for start/end extraction
         def get_start_point(geom):

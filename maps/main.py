@@ -2,12 +2,16 @@
 MTB Planner - Main Application
 Modular architecture for trail network visualization
 """
-
-from config import Config
 from loader import DataLoader
 from network_layer import NetworkBuilder
-from base_map import BaseLayer
-from bike_layer import BikeLayer
+from base_map import BaseLayers
+from bike_layer import BikeLayers
+from analysis_layer import AnalysisLayers
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config import Config
 
 
 def print_header():
@@ -43,25 +47,19 @@ def print_summary(study_area, rides, network):
 
 
 def main():
-    """Main application flow"""
     
-    # Print header
-    print_header()
-    
-    # Ensure output directories exist
+    print_header()    
     Config.ensure_directories()
     
-    # === STEP 1: LOAD DATA ===
     study_area, rides = DataLoader.load_data(
         Config.STUDY_AREA,
         Config.STRAVA_RIDES
     )
     
-    # === STEP 2: CLEAN & ENRICH DATA ===
+     # === STEP 2: CLEAN & ENRICH DATA ===
     rides = DataLoader.clean_ride_names(rides)
-    rides = DataLoader.calculate_basic_attributes(rides)
-    DataLoader.save_cleaned_data(rides, Config.CLEANED_RIDES)
-    
+    rides = DataLoader.calculate_km(rides)
+
     # === STEP 3: BUILD TRAIL NETWORK ===
     network = NetworkBuilder.create_network(
         rides,
@@ -76,9 +74,6 @@ def main():
     
     NetworkBuilder.save_network(network, Config.TRAIL_NETWORK)
     
-    # === STEP 4: CREATE INTERACTIVE MAP ===
-    print("\n🗺️  Creating interactive map...")
-    
     # Calculate map center
     bounds = study_area.total_bounds
     center = [(bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2]
@@ -87,17 +82,23 @@ def main():
     m = MapCreator.create_base_map(center, Config.DEFAULT_ZOOM)
     
     # Add layers
-    MapCreator.add_study_area(m, study_area)
-    MapCreator.add_interactive_network(m, network)
-    MapCreator.add_individual_rides(m, rides)
-    MapCreator.add_heatmap(m, rides)
-    MapCreator.add_instructions(m)
+    BaseLayers.add_study_area(m, study_area)
+    BaseLayers.add_interactive_network(m, network)
+    BaseLayers.add_instructions(m)    
+   
+    BikeLayers.add_all_rides(m, rides)
+    BikeLayers.add_rides_by_length(m, rides)
+    
+    AnalysisLayers.add_route_clusters(m, rides, Config.CLUSTER_DISTANCE)
+    AnalysisLayers.add_heatmap(m, rides)
+    
+    BaseLayers.add_instructions(m)
     
     # Add layer control
     folium.LayerControl(position='topright', collapsed=False).add_to(m)
     
     # Save map
-    MapCreator.save_map(m, Config.OUTPUT_MAP)
+    BaseLayers.save_map(m, Config.OUTPUT_MAP)
     
     # === STEP 5: PRINT SUMMARY ===
     print_summary(study_area, rides, network)

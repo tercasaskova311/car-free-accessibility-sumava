@@ -1,6 +1,8 @@
 import folium
 from folium.plugins import MarkerCluster, HeatMap, Fullscreen
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import Config
 
 class BaseLayers:
@@ -163,10 +165,10 @@ class BaseLayers:
         """
         m.get_root().html.add_child(folium.Element(instructions))
 
-def  save_map(m, output_path):
-        """Save map to HTML file"""
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        m.save(str(output_path))
-        print(f" Map saved to: {output_path}")
+    def save_map(m, output_path):
+            """Save map to HTML file"""
+            output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            m.save(str(output_path))
+            print(f" Map saved to: {output_path}")
    

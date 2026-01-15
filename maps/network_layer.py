@@ -12,13 +12,9 @@ from pathlib import Path
 class NetworkBuilder:
     
     @staticmethod
-    def create_network(rides, tolerance=50):
-  
-        print(f"🕸️  Building trail network (tolerance={tolerance}m)...")
-        
+    def create_network(rides, tolerance=50):        
         # Project to meters for accurate processing
         rides_proj = rides.to_crs('EPSG:32633')
-        
         # Merge all geometries
         all_geoms = rides_proj.geometry.tolist()
         merged = unary_union(all_geoms)
@@ -49,8 +45,9 @@ class NetworkBuilder:
         )
         
         # Back to original CRS
-        network = network.to_crs(rides.crs)
         network['length_km'] = network.geometry.length / 1000
+        network = network.to_crs(rides.crs)
+
         
         total_length = network['length_km'].sum()
         print(f"   ✓ Created {len(network)} segments")
@@ -60,7 +57,6 @@ class NetworkBuilder:
     
     @staticmethod
     def map_rides_to_segments(network, rides, buffer_distance=100):
-        print(f"🔗 Mapping rides to segments (buffer={buffer_distance}m)...")
         
         # Project for accurate buffering
         network_proj = network.to_crs('EPSG:32633')
@@ -77,7 +73,6 @@ class NetworkBuilder:
             for ride_idx, ride in rides_proj.iterrows():
                 if seg_buffer.intersects(ride.geometry):
                     ride_info = {
-                        'name': rides.loc[ride_idx, 'name'],
                         'length_km': rides.loc[ride_idx, 'length_km'],
                         'route_type': rides.loc[ride_idx, 'route_type'],
                         'ride_id': ride_idx

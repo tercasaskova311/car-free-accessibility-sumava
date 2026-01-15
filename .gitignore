@@ -7,5 +7,5 @@ data/
 *.gpkg
 results/
 
-data/.strava_token.json
-strava_api.py
+config/.strava_token.json
+preprocessing/strava_api.py
