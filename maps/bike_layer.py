@@ -11,42 +11,6 @@ from folium import FeatureGroup
 
 class BikeLayers: 
     @staticmethod
-    def add_all_rides(m, rides):
-        layer = folium.FeatureGroup(name='Trails', show=True)
-
-        # Add entire GeoDataFrame as single GeoJson
-        rides_subset = rides[['geometry', 'distance_km', 'route_type']].copy()
-        rides_subset['ride_id'] = rides_subset.index
-        
-        def popup_function(feature):
-            props = feature['properties']
-            return f"""
-            <b>Ride {props.get('ride_id', 'N/A')}</b><br>
-            Distance: {props.get('length_km', 0):.1f} km<br>
-            Type: {props.get('route_type', 'Unknown')}
-            """
-                
-        folium.GeoJson(
-            rides_subset,
-            style_function=lambda x: {
-                'color': Config.COLORS['default'],
-                'weight': 3,
-                'opacity': 0.6
-            },
-              tooltip=folium.GeoJsonTooltip(
-                fields=['ride_id'],
-                aliases=['Ride:']
-            ),
-            popup=folium.GeoJsonPopup(
-                fields=['ride_id', 'distance_km', 'route_type'],
-                aliases=['Ride:', 'Distance (km):', 'Type:']
-            )
-        ).add_to(layer)
-        
-        layer.add_to(m)
-        print(f"Added {len(rides_subset)} rides")
-
-    @staticmethod
     def add_clickable_rides(m, rides):    
         # Group rides by route type
         for route_type in rides['route_type'].unique():
@@ -89,39 +53,6 @@ class BikeLayers:
         
         print(f"✓ Added {len(rides)} clickable rides to map (hidden from layer control)")
 
-    def add_ride_junctions(m, rides):
-        layer = folium.FeatureGroup(name="🚩 Ride Junctions / Points", show=True)
-        
-        # Group rides by start point
-        from collections import defaultdict
-        start_points = defaultdict(list)
-        
-        for idx, row in rides.iterrows():
-            if row['start_point'] is None:
-                continue
-            point_key = (round(row['start_point'][0], 5), round(row['start_point'][1], 5))
-            start_points[point_key].append(row)
-        
-        # Add marker for each unique start point
-        for point, point_rides in start_points.items():
-            lon, lat = point
-            
-            # Create popup listing all rides from this point
-            html = f"<div style='font-family: Arial;'><b>🚴 {len(point_rides)} Ride(s) from here:</b><br><br>"
-            for ride in point_rides:
-                html += f"  <i>{ride['route_type']}, {ride['distance_km']:.1f} km</i><br>"
-            html += "</div>"
-            
-            folium.Marker(
-                location=[lat, lon],
-                popup=folium.Popup(html, max_width=300),
-                icon=folium.Icon(color='green', icon='bicycle', prefix='fa'),
-                tooltip=f"{len(point_rides)} ride(s) start here"
-            ).add_to(layer)
-        
-        layer.add_to(m)
-        print(f"✓ Added {len(start_points)} junction points")
-
     @staticmethod
     def add_rides_by_length(m, rides):
 
@@ -163,42 +94,7 @@ class BikeLayers:
             
             layer.add_to(m)
         
-        print("Added length-based layers")
-    
-    @staticmethod
-    def add_heatmap(m, rides):
-        heat_data = []
-        total_rides = len(rides)
-        
-        for idx, (_, ride) in enumerate(rides.iterrows()):
-            geom = ride.geometry
-            if geom is None:
-                continue
-
-            length = geom.length
-
-            for i in range(Config.HEATMAP_POINTS_PER_ROUTE):
-                try:
-                    point = geom.interpolate(i / Config.HEATMAP_POINTS_PER_ROUTE * length)
-                    heat_data.append([point.y, point.x])
-                except Exception:
-                    continue
-            
-            # Progress indicator
-            if (idx + 1) % 100 == 0:
-                print(f"   Processed {idx + 1}/{total_rides} rides...")
-        
-        if heat_data:
-            layer = folium.FeatureGroup(name='Ride Density Heatmap', show=False)
-            HeatMap(
-                heat_data,
-                min_opacity=0.3,
-                radius=Config.HEATMAP_RADIUS,
-                blur=Config.HEATMAP_BLUR,
-                gradient={0.0: 'blue', 0.5: 'lime', 0.7: 'yellow', 1.0: 'red'}
-            ).add_to(layer)
-            layer.add_to(m)
-            print(f"Added heatmap with {len(heat_data)} points")
+        print("Added length-based layers")  
     
     @staticmethod
     def add_start_points(m, rides):

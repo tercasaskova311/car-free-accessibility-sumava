@@ -5,6 +5,7 @@ from sklearn.cluster import DBSCAN
 import pandas as pd
 from pathlib import Path
 import sys
+import folium
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import Config
@@ -256,6 +257,126 @@ class SuitabilityAnalyzer:
         results[save_cols].to_file(output_path, driver='GPKG')
         print(f"\n💾 Results saved to: {output_path}")
 
+    def add_candidate_locations(m, candidates_path, protected_zones_path=None): #Add candidate trail center locations to map with environmental overlay"""        
+        # Add protected zones layer if available
+        if protected_zones_path and Path(protected_zones_path).exists():
+            zones = gpd.read_file(protected_zones_path)
+            
+            folium.GeoJson(
+                zones,
+                name='🌲 Protected Zones (A)',
+                style_function=lambda x: {
+                    'fillColor': '#2e7d32' if x['properties'].get('ZONA') == 'A' else '#a5d6a7',
+                    'color': '#1b5e20', #dark green
+                    'weight': 1.2,
+                    'dashArray': '1,6',
+                    'fillOpacity': 0.4 if x['properties'].get('ZONA') == 'A' else 0.25
+                },
+            ).add_to(m)
+
+        legend_html = """
+            <div style="
+                position: fixed;
+                bottom: 30px;
+                right: 30px;
+                z-index: 9999;
+                background-color: white;
+                padding: 10px 12px;
+                border-radius: 6px;
+                box-shadow: 0 0 8px rgba(0,0,0,0.2);
+                font-size: 13px;
+            ">
+            <b>Protected Zones</b><br>
+            <hr style="margin: 6px 0;">
+            <span style="display:inline-block;
+                        width:12px;
+                        height:12px;
+                        background:#2e7d32;
+                        opacity:0.45;
+                        margin-right:6px;"></span>
+            Zone A – Strict protection<br>
+
+            <span style="display:inline-block;
+                        width:12px;
+                        height:12px;
+                        background:#a5d6a7;
+                        opacity:0.4;
+                        margin-right:6px;"></span>
+            Other protected zones
+            </div>
+            """
+
+        m.get_root().html.add_child(folium.Element(legend_html))
+            
+        candidates = gpd.read_file(candidates_path)
+        
+        # Create layer
+        layer = folium.FeatureGroup(name='🎯 Candidate Trail Centers', show=True)
+        
+        # Color scale for ranks
+        rank_colors = {
+            1: '#2ecc71',  # Green - best
+            2: '#3498db',  # Blue
+            3: '#f39c12',  # Orange
+            4: '#e74c3c',  # Red
+            5: '#95a5a6'   # Gray
+        }
+        
+        for idx, candidate in candidates.iterrows():
+            rank = int(candidate['rank'])
+            color = rank_colors.get(rank, '#95a5a6')
+
+            # Create popup - handle potential missing columns
+            trail_count = int(candidate.get('trail_count', 0))
+            trail_length = candidate.get('trail_length_km', 0.0)
+            total_rides = int(candidate.get('total_rides', 0))
+            
+            
+            # Create popup
+            popup_html = f"""
+            <div style="font-family: Arial; min-width: 250px;">
+                <h4 style="margin: 0 0 10px 0; color: {color};">
+                    {'🥇' if rank == 1 else '🥈' if rank == 2 else '🥉' if rank == 3 else f'#{rank}'} 
+                    Candidate Location
+                </h4>
+                <p style="margin: 5px 0; font-size: 14px;">
+                    <b>Suitability Score:</b> {candidate['suitability_score']:.1f}/100
+                </p>
+                <hr style="margin: 10px 0;">
+                <p style="font-size: 12px; margin: 5px 0;">
+                    <b>Trail Access (5km):</b><br>
+                    • {trail_count} segments<br>
+                    • {trail_length:.1f} km trails<br>
+                    • {total_rides} recorded rides<br>
+                </p>
+            </div>
+            """
+            
+            # Add marker
+            folium.CircleMarker(
+                location=[candidate.geometry.y, candidate.geometry.x],
+                radius=15 if rank <= 3 else 10,
+                color=color,
+                fill=True,
+                fillColor=color,
+                fillOpacity=0.7,
+                weight=3,
+                popup=folium.Popup(popup_html, max_width=300),
+                tooltip=f"Rank #{rank} - Score: {candidate['suitability_score']:.0f}/100"
+            ).add_to(layer)
+            
+            # Add 5km radius circle
+            folium.Circle(
+                location=[candidate.geometry.y, candidate.geometry.x],
+                radius=5000,
+                color=color,
+                fill=False,
+                weight=2,
+                opacity=0.3,
+                dashArray='5, 5'
+            ).add_to(layer)
+        
+        layer.add_to(m)
 
 # Standalone execution
 def main():
@@ -275,12 +396,10 @@ def main():
     protected_zones = None
     
     if zones_path.exists():
-        print("🌲 Loading protected zones...")
         protected_zones = gpd.read_file(zones_path)
-        print(f"   ✓ Loaded {len(protected_zones)} zones")
     else:
         print("⚠️ No protected zones file found")
-    
+        
     # Run analysis
     results = SuitabilityAnalyzer.analyze(network, rides, study_area, protected_zones)
     
@@ -293,6 +412,8 @@ def main():
         
         return results
     
+    adding_location = add_candidate_locations(m, output_path, protected_zones)
+
     return None
 
 
