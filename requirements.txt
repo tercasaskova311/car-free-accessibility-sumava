@@ -1,0 +1,13 @@
+geopandas
+shapely
+pyproj
+fiona
+folium
+pandas
+numpy
+scikit-learn
+matplotlib
+stravalib
+requests
+polyline
+rtree
