@@ -92,7 +92,6 @@ def main():
     
     # Add layers
     BaseLayers.add_study_area(m, study_area)   
-   
     BikeLayers.add_rides_by_length(m, rides)
 
     HeatMapLayer.add_route_clusters(m, rides, Config.CLUSTER_DISTANCE)
@@ -101,10 +100,14 @@ def main():
     candidates_path = Config.OUTPUT_DIR / 'candidate_locations.gpkg'
     protected_zones_file = Path('data/sumava_zones_2.geojson')
     SuitabilityAnalyzer.add_candidate_locations(m, candidates_path, protected_zones_file)
+    candidates_path = Config.OUTPUT_DIR / 'candidate_locations.gpkg'
+
+
+    candidates = gpd.read_file(candidates_path)
+    BaseLayers.add_analysis_summary(m, network, candidates)  
+
     BaseLayers.add_instructions(m) 
-    #BaseLayers.add_trail_network_analysis(m, network) - scattered
     
-    BikeLayers.add_clickable_rides(m, rides)  # Trails clickable but hidden from control
         
     # Add layer control
     folium.LayerControl(position='topright', collapsed=False).add_to(m)

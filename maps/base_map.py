@@ -82,6 +82,49 @@ class BaseLayers:
         """
         m.get_root().html.add_child(folium.Element(instructions))
 
+    @staticmethod
+    def add_analysis_summary(m, network, candidates_path): 
+        top_candidate = candidates_path.iloc[0]
+        hottest_segment = network.nlargest(1, 'ride_count').iloc[0]
+        
+        summary_html = f"""
+        <div style="
+            position: fixed;
+            top: 120px;
+            left: 60px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            z-index: 1000;
+            max-width: 320px;
+            font-family: Arial;
+        ">
+            <h4 style="margin: 0 0 10px 0; color: #2c3e50;">📊 Key Findings</h4>
+            
+            <div style="font-size: 13px; line-height: 1.6;">
+                <p style="margin: 8px 0;">
+                    <b>🏆 Best Trail Center Location:</b><br>
+                    📍 {top_candidate.geometry.y:.4f}°N, {top_candidate.geometry.x:.4f}°E<br>
+                    Score: {top_candidate['suitability_score']:.0f}/100
+                </p>
+                
+                <p style="margin: 8px 0;">
+                    <b> Most frequented Trail Segment:</b><br>
+                    {hottest_segment['ride_count']} rides • {hottest_segment['distance_km']:.1f}km
+                </p>
+                
+                <p style="margin: 8px 0;">
+                    <b>🌲 Environmental Status:</b><br>
+                    {'✅ Outside prohibited zones' if not top_candidate['in_prohibited_zone'] 
+                    else '❌ In Zone A (prohibited)'}
+                </p>
+            </div>
+        </div>
+        """
+        
+        m.get_root().html.add_child(folium.Element(summary_html))
+
     def save_map(m, output_path):
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,37 +1,18 @@
 import folium
-from folium.plugins import MarkerCluster, HeatMap, MiniMap, Fullscreen
+from folium.plugins import MarkerCluster
 import geopandas as gpd
 import pandas as pd
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import Config
-from folium import FeatureGroup
+from shapely.geometry import Point
 
-
-class BikeLayers: 
-    @staticmethod
-    def add_clickable_rides(m, rides):    
+class BikeLayers:
+     @staticmethod
+    def add_trail_net(m, rides):    
         # Group rides by route type
         for route_type in rides['route_type'].unique():
             type_rides = rides[rides['route_type'] == route_type]
             
-            for idx, ride in type_rides.iterrows():
-
-                popup_html = f"""
-                <div style='font-family: Arial; min-width: 200px;'>
-                    <p style='margin: 3px 0; font-size: 13px;'>
-                        <b>Type:</b> {ride['route_type']}<br>
-                        <b>Distance:</b> {ride['distance_km']:.1f} km<br>
-                        <b>Activity ID:</b> {ride['activity_id']}
-                    </p>
-                </div>
-                """
-                
-                # Choose color based on route type
-                color_map = {
-                    'Ride': '#5c4033'
-                }
+            for idx, ride in type_rides.iterrows():                
+                color_map = {'Ride': '#5c4033'}
                 color = color_map.get(route_type, '#5c4033')
                 
                 # Add ride geometry - control=False prevents it from showing in layer control!
@@ -46,12 +27,8 @@ class BikeLayers:
                         'weight': 5,
                         'opacity': 1.0
                     },
-                    popup=folium.Popup(popup_html, max_width=300),
-                    tooltip=f"({ride['distance_km']:.1f} km)",
                     control=False  # THIS IS THE KEY - hides from layer control!
                 ).add_to(m)
-        
-        print(f"✓ Added {len(rides)} clickable rides to map (hidden from layer control)")
 
     @staticmethod
     def add_rides_by_length(m, rides):
