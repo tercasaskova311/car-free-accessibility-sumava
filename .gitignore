@@ -12,3 +12,4 @@ preprocessing/strava_api.py
 __pycache__/
 maps/__pycache__
 .DS_store
+maps/mtb_planner.html
