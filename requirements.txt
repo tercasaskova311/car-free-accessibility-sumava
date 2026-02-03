@@ -11,3 +11,8 @@ stravalib
 requests
 polyline
 rtree
+
+# Spatial autocorrelation analysis
+libpysal
+esda
+splot

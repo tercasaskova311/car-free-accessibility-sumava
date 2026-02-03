@@ -7,8 +7,8 @@ class Config:
     SUMAVA_DIR = DATA_DIR / 'sumava_data'
     OUTPUT_DIR = Path('maps')
 
-    STUDY_AREA = 'data/sumava_data/sumava_aoi.gpkg'
-    STRAVA_RIDES = 'data/strava/strava_route_sample.geojson'
+    STUDY_AREA = 'data/AIO/sumava_aoi.geojson'
+    STRAVA_RIDES = 'data/strava/strava_routes_sumava_merged.geojson'
 
     CLEANED_RIDES = STRAVA_DIR / 'rides_cleaned.gpkg'
     TRAIL_NETWORK = STRAVA_DIR / 'trail_network.gpkg'
@@ -20,8 +20,8 @@ class Config:
     MAX_ZOOM = 1
     
     # === NETWORK SETTINGS ===
-    SNAP_TOLERANCE = 50  # meters - merge lines within this distance
-    SIMPLIFY_TOLERANCE = 10  # meters
+    SNAP_TOLERANCE = 10  # meters - merge lines within this distance
+    SIMPLIFY_TOLERANCE = 5  # meters
     INTERSECTION_BUFFER = 100  # meters - for mapping rides to segments
     CLUSTER_DISTANCE = 2000  # meters - for grouping nearby rides
     
