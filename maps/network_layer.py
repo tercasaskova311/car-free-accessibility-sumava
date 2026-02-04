@@ -8,24 +8,66 @@ import time
 
 class NetworkBuilder:    
     @staticmethod
-    def create_network_sequential(rides, tolerance=15):
+    def create_network_sequential(rides, tolerance=15, snap_tolerance=25):
         """
-        Ultra-simple: just union + merge
+        Simplified sequential version to diagnose issues
+        Much simpler, no multiprocessing
         """
-        print("Creating network from rides...")
+        print("Starting sequential network creation...")
         rides_proj = rides.to_crs('EPSG:32633')
         
-        # Simplify
-        print("1. Simplifying...")
-        rides_proj['geometry'] = rides_proj.geometry.simplify(tolerance, preserve_topology=True)
+        print(f"Processing {len(rides_proj)} rides")
         
-        # Union all lines (this is the key step!)
-        print("2. Merging all rides into network...")
-        all_lines = unary_union(rides_proj.geometry)
+        # STEP 1: Simplify
+        print("\n1. Simplifying geometries...")
+        start = time.time()
+        rides_proj['geometry'] = [
+            g.simplify(tolerance, True) 
+            for g in tqdm(rides_proj.geometry, desc="Simplifying")
+        ]
+        print(f"   Done in {time.time() - start:.1f}s")
         
-        # Split into segments
-        print("3. Creating segments...")
-        merged = linemerge(all_lines)
+        # STEP 2: Buffer (this is the slow part)
+        print("\n2. Buffering geometries...")
+        print("   This will take ~15-30 minutes for 9k rides...")
+        start = time.time()
+        
+        # Process in smaller chunks with progress
+        chunk_size = 500
+        all_buffered = []
+        
+        for i in tqdm(range(0, len(rides_proj), chunk_size), desc="Buffering chunks"):
+            chunk = rides_proj.iloc[i:i+chunk_size]
+            chunk_buffered = [g.buffer(snap_tolerance) for g in chunk.geometry]
+            # Union this chunk
+            chunk_union = unary_union(chunk_buffered)
+            all_buffered.append(chunk_union)
+        
+        print(f"   Buffering done in {time.time() - start:.1f}s")
+        
+        # STEP 3: Union all chunks
+        print("\n3. Merging all buffered chunks...")
+        start = time.time()
+        buffered = unary_union(all_buffered)
+        print(f"   Done in {time.time() - start:.1f}s")
+        
+        # STEP 4: Extract centerlines
+        print("\n4. Extracting centerlines...")
+        start = time.time()
+        snapped = buffered.buffer(-snap_tolerance)
+        
+        if isinstance(snapped, Polygon):
+            centerlines = snapped.boundary
+        elif hasattr(snapped, 'geoms'):
+            centerlines = unary_union([p.boundary for p in snapped.geoms])
+        else:
+            centerlines = snapped.boundary
+        print(f"   Done in {time.time() - start:.1f}s")
+        
+        # STEP 5: Merge segments
+        print("\n5. Merging connected segments...")
+        start = time.time()
+        merged = linemerge(centerlines)
         
         if isinstance(merged, LineString):
             segments = [merged]
@@ -33,13 +75,16 @@ class NetworkBuilder:
             segments = list(merged.geoms)
         else:
             segments = []
+        print(f"   Done in {time.time() - start:.1f}s")
         
-        # Filter short
-        segments = [s for s in segments if s.length >= 200]
+        print(f"\nCreated {len(segments)} segments")
         
-        print(f"✓ Created {len(segments)} unique trail segments")
+        # Filter short segments
+        min_length = 50
+        segments = [s for s in segments if s.length >= min_length]
+        print(f"After filtering: {len(segments)} segments")
         
-        network = gpd.GeoDataFrame(
+        network_proj = gpd.GeoDataFrame(
             {
                 'segment_id': range(len(segments)),
                 'length_m': [s.length for s in segments]
@@ -48,24 +93,17 @@ class NetworkBuilder:
             crs='EPSG:32633'
         )
         
-        network['distance_km'] = network['length_m'] / 1000
-        return network.to_crs(rides.crs)
+        network_proj['distance_km'] = network_proj["length_m"] / 1000
+        return network_proj.to_crs(rides.crs)
     
     @staticmethod
-    def map_rides_to_segments_simple(network, rides, buffer_distance=200):
-        """
-        Simplified version with detailed progress
-        """
-        print("\nMapping rides to segments (simple version)...")
+    def map_rides_to_segments(network, rides, buffer_distance=200):
+        #i need this fucntion  because I want to get ride counts per segment
+
         network_proj = network.to_crs('EPSG:32633')
         rides_proj = rides.to_crs('EPSG:32633').copy()
-        
-        if 'ride_id' not in rides_proj.columns:
-            rides_proj['ride_id'] = range(len(rides_proj))
-        
-        print(f"  {len(rides_proj)} rides → {len(network_proj)} segments")
-        
-        # Buffer segments
+
+        #spatial join within buffer - find rides intersecting buffer
         print("\n1. Buffering segments...")
         start = time.time()
         buffered_network = network_proj.copy()
@@ -88,10 +126,10 @@ class NetworkBuilder:
             chunk_end = min((i + 1) * chunk_size, len(rides_proj))
             chunk = rides_proj.iloc[chunk_start:chunk_end]
             
-            # Spatial join for this chunk
+            # Spatial join for this chunk - find rides intersecting buffered segments
             joined = gpd.sjoin(
                 buffered_network[['segment_id', 'geometry']],
-                chunk[['ride_id', 'distance_km', 'geometry']],
+                chunk[['activity_id', 'distance_km', 'geometry']],
                 how='inner',
                 predicate='intersects'
             )
@@ -100,7 +138,7 @@ class NetworkBuilder:
             for segment_id, group in joined.groupby('segment_id'):
                 for _, row in group.iterrows():
                     segment_rides_dict[segment_id].append({
-                        "activity_id": int(row['ride_id']),
+                        "activity_id": int(row['activity_id']),
                         "distance_km": row['distance_km']
                     })
         

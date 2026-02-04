@@ -11,12 +11,6 @@ from config import Config
 
 
 class HeatMapLayer:
-    # ------------------------------------------------------------------
-    # Density heatmap
-    # ------------------------------------------------------------------
-    # With 9 585 rides × 30 points = 287 550 points pushed into one
-    # Leaflet HeatMap layer.  Cap it to ~15 000 points via subsampling.
-    # ------------------------------------------------------------------
     @staticmethod
     def add_heatmap(m, rides):
         MAX_HEAT_POINTS = 15_000

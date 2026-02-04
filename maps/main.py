@@ -60,7 +60,7 @@ def main():
 
     # === STEP 3: BUILD OR LOAD NETWORK ===
     if Config.TRAIL_NETWORK.exists():
-        print(f"\n✓ Loading existing network from {Config.TRAIL_NETWORK}")
+        print(f"\n Loading existing network from {Config.TRAIL_NETWORK}")
         network = gpd.read_file(Config.TRAIL_NETWORK)
         print("   Re-mapping rides to network segments...")
         network = NetworkBuilder.map_rides_to_segments_simple(

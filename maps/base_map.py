@@ -22,7 +22,7 @@ class BaseLayers:
         
         folium.TileLayer(
             'OpenStreetMap',
-            name='Street Map',
+            name='Open Street Map',
             overlay=False,
             control=True
         ).add_to(m)
@@ -42,9 +42,6 @@ class BaseLayers:
             control=True
         ).add_to(m)
         
-        MiniMap(toggle_display=True).add_to(m)
-        Fullscreen().add_to(m)
-        
         return m
     
     @staticmethod
@@ -56,7 +53,8 @@ class BaseLayers:
             style_function=lambda x: {
                 'fillColor': 'transparent',
                 'color': Config.COLORS['study_area'],
-                'weight': 3
+                'weight': 3,
+                'dashArray': '10, 5'
             },
             control=False
         ).add_to(m)

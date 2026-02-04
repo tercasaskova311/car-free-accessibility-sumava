@@ -2,13 +2,13 @@
 **Geospatial Analysis of Mountain Bike Routes Using Personal Strava Data**
 
 
-Using 7 years of personal GPS tracking data from Strava (2017-2024), this analysis:
-- Identifies high-traffic trail networks through spatial clustering (DBSCAN)
+Using personal GPS tracking data from Garmin device (2017-2024), this analysis:
+- Identifies high-traffic trail networks through spatial analysis (Moran's I)
 - Evaluates candidate trail center locations based on accessibility metrics
 - Performs environmental constraint analysis using protected zone classifications
 - Generates an interactive map with multiple analytical layers
 
-**[View Live Interactive Map](maps/mtb_planner_map.html)** (download and open in browser)
+**[View Live Interactive Map](....)
 
 ---
 
@@ -33,10 +33,7 @@ git clone https://github.com/tercasaskova311/mtb-ride-planner
 cd mtb-ride-planner
 pip install -r requirements.txt
 
-#Option 1: Use Sample Data (Quick Demo)
-python maps/testing.py
-
-#Option 2: Download Your Own Strava Data
+#Download Your Own Strava Data
 #Requirements = Active Strava account with GPS activities
 
 #1.Get Strava API Credentials:**
@@ -53,15 +50,14 @@ python maps/testing.py
    python preprocessing/strava_data.py
 
 #4.Run Analysis
-
-python maps/main.py
+   python maps/main.py
 ```
 
 ## STEPS ##
 1. Load and clean ride data
 2. Build unified trail network from overlapping GPS tracks
 3. Map rides to network segments
-4. Perform DBSCAN clustering on high-traffic areas
+4. Perform Moran's I global and local spacial analysis
 5. Calculate suitability scores for candidate locations
 6. Check environmental constraints (protected zones)
 7. Generate interactive map with all layers
@@ -70,7 +66,7 @@ python maps/main.py
 
 ## Interactive Map Features
 
-Open `maps/mtb_planner_map.html` in web browser.
+Open (...)
 
 ### Base Layers
 -  **OpenStreetMap** - Default street map
@@ -82,10 +78,9 @@ Open `maps/mtb_planner_map.html` in web browser.
 |-------|-------------|------------|
 | **Study Area Boundary** | Red dashed outline of NP + CHKO | Always on |
 | **Protected Zones** | Green gradient (darker = stricter) | On by default |
-| **Trail Network** | Color by popularity:<br>🟡 Low (1-2 rides)<br>🟠 Medium (3-6 rides)<br>🔴 High (7+ rides) | On by default |
-| **Candidate Locations** | Numbered markers (1-8), sized by rank | On by default |
+| **Trail Network** | .....|
+| **Candidate Location** | 1 choosen location marked by circle | On by default |
 | **Density Heatmap** | Red-yellow GPS point concentration | Off by default |
-| **Ride Clusters** | Grouped by start point proximity | Off by default |
 | **Rides by Length** | Short/Medium/Long categories | Off by default |
 
 ---
@@ -102,33 +97,27 @@ mtb-ride-planner/
 │   │   └── rides_cleaned.gpkg
 │   │
 │   ├── sumava_data/               # Protected area boundaries
-│   │   ├── sumava_np.geojson
-│   │   ├── sumava_chko.geojson
 │   │   └── sumava_aoi.gpkg        # Combined AOI
 │   │
 │   └── sumava_zones_2.geojson     # Official zone classifications
 │
 ├── maps/                          # Analysis scripts
 │   ├── main.py                    # Main pipeline
-│   ├── analysis.py                # Suitability analysis
+│   ├── spatial_analysis.py        # Suitability analysis
 │   ├── network_layer.py           # Trail network construction
 │   ├── base_map.py                # Base map creation
 │   ├── bike_layer.py              # Trail visualization layers
 │   ├── heatmap.py                 # Density heatmap
 │   ├── loader.py                  # Data loading utilities
-│   ├── testing.py                 # Quick test with sample data
 │   └── mtb_planner_map.html       # OUTPUT: Interactive map
 │
 ├── preprocessing/
 │   ├── aio_download.py            # Download protected areas
 │   └── strava_data.py             # Download Strava activities
 │
-├── analysis/
-│   └── visualization_zones.py     # Zone classification analysis
-│
 ├── config.py                      # Configuration parameters
-├── requirements.txt               # Python dependencies
-└── README.md                      # This file
+├── requirements.txt               
+└── README.md                      
 ```
 
 ---
@@ -136,18 +125,18 @@ mtb-ride-planner/
 ## Methodology
 
 ### 1. Trail Network Construction
-- **Input:** 147 overlapping GPS tracks
+- **Input:**  overlapping GPS tracks
 - **Method:** Shapely `unary_union` + `linemerge`
-- **Output:** 324 distinct trail segments
+- **Output:** distinct trail segments
 
 ### 2. Popularity Analysis
 - **Method:** Buffer-based spatial join (100m tolerance)
 - **Result:** Each segment tagged with ride count
 
 ### 3. Candidate Identification
-- **Algorithm:** DBSCAN clustering (eps=2000m, min_samples=3)
-- **Filtering:** High-traffic segments (≥5 rides)
-- **Output:** 8 candidate clusters
+- **Algorithm:** Moran's I local + global
+- **Filtering:** High-traffic segments 
+- **Output:** 1 candidate 
 
 ### 4. Accessibility Scoring
 - **Metric:** Trail count/length/traffic within 5km radius

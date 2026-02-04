@@ -6,12 +6,9 @@ from esda.moran import Moran, Moran_Local
 import pandas as pd
 from pathlib import Path
 
-class SpatialAutocorrelation:
-    """Moran's I spatial autocorrelation analysis for trail network hotspots."""
-
-    # ----------------------------------------------------------------------
-    # Global Moran's I
-    # ----------------------------------------------------------------------
+class SpatialAutocorrelation: 
+#Uses Moran's I to identify statistically significant clustering => Spatial autocorrelation analysis for trail network hotspots.
+    
     @staticmethod
     def calculate_global_morans_i(network_proj, attribute='ride_count', distance_threshold=2000):
         """Test for global spatial autocorrelation in trail usage."""
