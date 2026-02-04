@@ -129,7 +129,7 @@ class LocationAnalyzer:
         ].copy()
 
         if len(hotspots) == 0:
-            print("⚠️  No significant hotspots found")
+            print("No significant hotspots found")
             return None
 
         from sklearn.cluster import DBSCAN
@@ -219,14 +219,10 @@ class LocationAnalyzer:
         """
         df = candidates.copy()
 
-        def normalize(series):
-            if series.max() == series.min():
-                return pd.Series([50.0] * len(series), index=series.index)
-            return ((series - series.min()) / (series.max() - series.min())) * 100.0
+        df['accessibility_score'] = df['trail_count'].rank(ascending=True, method='dense') / len(df) * 100
+        df['usage_score']         = df['total_rides'].rank(ascending=True, method='dense') / len(df) * 100
+        df['clustering_score']    = df['mean_local_morans_i'].rank(ascending=True, method='dense') / len(df) * 100
 
-        df['accessibility_score'] = normalize(df['trail_count'])
-        df['usage_score']         = normalize(df['total_rides'])
-        df['clustering_score']    = normalize(df['mean_local_morans_i'])
 
         df['suitability_score'] = (
             df['accessibility_score'] * 0.30 +

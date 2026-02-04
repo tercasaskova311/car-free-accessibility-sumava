@@ -39,7 +39,7 @@ class Config:
         'out_and_back': '#9b59b6',   # Purple
         
         # General
-        'study_area': '#FCE512',
+        'study_area': '#CC0000',
         'highlight': '#f39c12',
         'default': '#3498db'
     }
@@ -78,3 +78,10 @@ class Config:
     BASE_TRAIL_SAMPLE_SIZE = 500   # max rides to show on base trail layer
     # Simplify geometry tolerance (meters) applied before writing to HTML
     RENDER_SIMPLIFY_M = 10
+
+    # In config.py, update these values:
+
+    BASE_TRAIL_SAMPLE_SIZE = 300   # Reduced from 500
+    RENDER_SIMPLIFY_M = 15         # Increased from 10 (more aggressive)
+    # For rides by length
+    MAX_RIDES_PER_LENGTH_CATEGORY = 200  # Add this new setting

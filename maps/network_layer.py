@@ -80,7 +80,7 @@ class NetworkBuilder:
         print(f"\nCreated {len(segments)} segments")
         
         # Filter short segments
-        min_length = 50
+        min_length = 500
         segments = [s for s in segments if s.length >= min_length]
         print(f"After filtering: {len(segments)} segments")
         
@@ -97,7 +97,7 @@ class NetworkBuilder:
         return network_proj.to_crs(rides.crs)
     
     @staticmethod
-    def map_rides_to_segments(network, rides, buffer_distance=200):
+    def map_rides_to_segments(network, rides, buffer_distance=100):
         #i need this fucntion  because I want to get ride counts per segment
 
         network_proj = network.to_crs('EPSG:32633')

@@ -103,6 +103,7 @@ class TrailsLayers:
         m.get_root().html.add_child(folium.Element(legend_html))
         
         print(f"  ✓ Added {len(zones_gdf)} protected zones with legend")
+    
     # ------------------------------------------------------------------
     # Candidate locations  (tiny count — no changes needed)
     # ------------------------------------------------------------------
@@ -169,89 +170,51 @@ class TrailsLayers:
         print(f"  ✓ Added {len(candidates_gdf)} candidate locations")
 
     # ------------------------------------------------------------------
-    # Base trail layer
-    # ------------------------------------------------------------------
-    # Single batched GeoJson, subsampled, simplified.
+    # FIXED: Base trail layer (network segments with traffic coloring)
     # ------------------------------------------------------------------
     @staticmethod
-    def add_trail_net(m, rides):
-        sample_size = Config.BASE_TRAIL_SAMPLE_SIZE   # 500
-        simplify    = Config.RENDER_SIMPLIFY_M        # 10 m
+    def add_trail_net(m, network):
+        """Add trail network as a simple, clean layer for a dark base map."""
+        simplify     = Config.RENDER_SIMPLIFY_M
+        # Keep only geometry for display
+        display = network[['geometry']].copy()
 
-        # Only geometry — nothing else goes to the HTML
-        display = rides[['geometry']].copy()
-
-        # Simplify
+        # Simplify geometry for performance
         display_proj = display.to_crs("EPSG:32633")
         display_proj['geometry'] = display_proj.geometry.simplify(simplify)
         display = display_proj.to_crs("EPSG:4326")
 
-        if len(display) > sample_size:
-            display = display.sample(n=sample_size, random_state=42)
-            print(f"   ⚡ Base trail layer subsampled: {len(rides)} → {sample_size}")
-
         layer = folium.FeatureGroup(name='Trail Network', show=True)
-        
-        def _create_popup(feature):
-            rc = feature['properties'].get('ride_count', 0)
-            length = feature['properties'].get('distance_km', 0)
-            
-            if rc >= 7:
-                popularity = "🔥 Popular Trail"
-                color = "#d62728"
-            elif rc >= 3:
-                popularity = "Moderate Usage"
-                color = "#ff7f0e"
-            else:
-                popularity = "Quiet Trail"
-                color = "#1f77b4"
-            
-            return f"""
-            <div style="font-family: Arial; min-width: 200px;">
-                <h4 style="margin: 0 0 8px 0; color: {color};">{popularity}</h4>
-                <p style="margin: 5px 0; font-size: 12px;">
-                    <b>Total rides:</b> {rc}<br>
-                    <b>Trail length:</b> {length:.1f} km<br>
-                    <b>Rides/km:</b> {(rc/length if length > 0 else 0):.1f}
-                </p>
-            </div>
-            """
-        
-        for _, row in export.iterrows():
-            feature = {
-                'type': 'Feature',
-                'properties': {
-                    'ride_count': row['ride_count'],
-                    'distance_km': row['distance_km']
-                },
-                'geometry': row['geometry'].__geo_interface__
+
+        # Simple style: bright color for dark background
+        def style_function(feature):
+            return {
+                'color': '#f2b632',  # golden-orange trails
+                'weight': 2,
+                'opacity': 0.9
             }
-            
-            folium.GeoJson(
-                feature,
-                style_function=lambda x: {
-                    'color': '#8B7355',
-                    'weight': 2,
-                    'opacity': 0.6
-                },
-                highlight_function=lambda x: {'weight': 4, 'opacity': 1.0},
-                popup=folium.Popup(_create_popup(feature), max_width=250),
-                tooltip=f"{row['ride_count']} rides"
-            ).add_to(layer)
-        
+
+        # Add all trails in a single GeoJson layer
+        folium.GeoJson(
+            display,
+            style_function=style_function,
+            tooltip=folium.GeoJsonTooltip(
+                fields=[],
+                labels=False
+            )
+        ).add_to(layer)
+
         layer.add_to(m)
-        print(f"  ✓ Trail network added ({len(display)} segments with popups)")
-      
+        print(f"  ✓ Base trail network added ({len(display)} segments)")
+
     # ------------------------------------------------------------------
-    # Rides by length
-    # ------------------------------------------------------------------
-    # Subsampled per category + Categorical cast to str so folium
-    # can serialise it without choking.
+    # FIXED: Rides by length - optimized
     # ------------------------------------------------------------------
     @staticmethod
     def add_rides_by_length(m, rides):
+        """Add rides categorized by length - OPTIMIZED VERSION"""
         simplify          = Config.RENDER_SIMPLIFY_M
-        MAX_PER_CATEGORY  = 500
+        MAX_PER_CATEGORY  = 300  # Reduced from 500
 
         rides = rides.copy()
         rides['length_category'] = pd.cut(
@@ -285,28 +248,25 @@ class TrailsLayers:
                 subset = subset.sample(n=MAX_PER_CATEGORY, random_state=42)
                 print(f"   ⚡ {category}: subsampled to {MAX_PER_CATEGORY}")
 
-            # Only the columns folium needs
-            export_cols = ['geometry']
-            if 'activity_id' in subset.columns:
-                export_cols.append('activity_id')
-            if 'distance_km' in subset.columns:
-                export_cols.append('distance_km')
-
+            # Only the columns folium needs - simplified for performance
+            export_cols = ['geometry', 'distance_km']
             export = subset[export_cols].copy()
 
             layer = folium.FeatureGroup(
                 name=f'{category} ({len(subset)})',
-                show=False
+                show=False  # Off by default to reduce initial load
             )
 
+            # Single GeoJson for entire category
             folium.GeoJson(
                 export,
                 style_function=lambda x, c=color: {
-                    'color': c, 'weight': 1, 'opacity': 0.8
+                    'color': c, 'weight': 1.5, 'opacity': 0.6
                 },
                 tooltip=folium.GeoJsonTooltip(
-                    fields=[f for f in ['activity_id', 'distance_km'] if f in export_cols],
-                    aliases=['Ride:', 'Distance (km):']
+                    fields=['distance_km'],
+                    aliases=['Distance (km):'],
+                    labels=True
                 )
             ).add_to(layer)
 

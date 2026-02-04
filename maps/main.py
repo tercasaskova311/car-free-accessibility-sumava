@@ -15,13 +15,12 @@ from config import Config
 def stats(study_area, rides, network):
     print("\n========== SUMMARY ==========")
     print(f"Total Rides:     {len(rides)}")
-    print(f"Total Distance:  {rides['distance_km'].sum():.1f} km")
     print(f"Average Ride:    {rides['distance_km'].mean():.1f} km")
     print(f"Longest Ride:    {rides['distance_km'].max():.1f} km")
 
     print(f"\nNetwork:")
-    print(f"  Total Length:  {network['distance_km'].sum():.1f} km")
-    print(f"  Most Popular:  {network['ride_count'].max()} rides on one segment")
+    print(f"  Total km of trails in the study area:  {network['distance_km'].sum():.1f} km")
+    print(f"  Most Popular:  {network['ride_count'].max()} rides on given one segment")
 
     candidates_path = Config.OUTPUT_DIR / 'candidate_locations.gpkg'
     if candidates_path.exists():
@@ -39,7 +38,6 @@ def stats(study_area, rides, network):
         print(f"  Coordinates:  {best.geometry.y:.4f}°N, {best.geometry.x:.4f}°E")
         print(f"  Score:        {best['suitability_score']:.1f}/100")
         print(f"  Local I:      {best.get('mean_local_morans_i', 0):.3f}")
-        print(f"  Trail Access: {int(best['trail_count'])} segments ({best['trail_length_km']:.1f} km)")
         print(f"  Zone:         {best['zone_type']} "
               f"{'❌ PROHIBITED' if best['in_prohibited_zone'] else '✓ PERMITTED'}")
 
@@ -63,18 +61,18 @@ def main():
         print(f"\n Loading existing network from {Config.TRAIL_NETWORK}")
         network = gpd.read_file(Config.TRAIL_NETWORK)
         print("   Re-mapping rides to network segments...")
-        network = NetworkBuilder.map_rides_to_segments_simple(
+        network = NetworkBuilder.map_rides_to_segments(
             network,
             rides,
             buffer_distance=Config.INTERSECTION_BUFFER
         )
     else:
-        print("\n🔨 Building trail network...")
+        print("\n Building trail network...")
         network = NetworkBuilder.create_network_sequential(
             rides,
             tolerance=Config.SNAP_TOLERANCE
         )
-        network = NetworkBuilder.map_rides_to_segments_simple(
+        network = NetworkBuilder.map_rides_to_segments(
             network,
             rides,
             buffer_distance=Config.INTERSECTION_BUFFER
@@ -112,24 +110,23 @@ def main():
     # Keep a reference copy for popup lookups, then drop from the main frames.
     # =========================================================================
 
-    # network: keep the 'rides' lists in a plain dict for popup lookups only
-    network_rides_lookup = dict(zip(
-        network['segment_id'],
-        network['rides'] if 'rides' in network.columns else [[] for _ in network]
-    ))
-
-    # Now drop unsafe columns from the frames that go to Folium
+    # Drop the 'rides' column completely before passing to map layers
     network_map = network.drop(columns=['rides'], errors='ignore').copy()
 
+    # Ensure we keep only the columns needed for rendering
+    essential_network_cols = ['segment_id', 'geometry', 'ride_count', 'distance_km']
+    network_map = network_map[essential_network_cols].copy()
+
+    # For rides, drop problematic columns
     rides_map = rides.drop(
         columns=['start_point', 'end_point'],
         errors='ignore'
     ).copy()
 
-    print(f"\n  network_map columns : {list(network_map.columns)}")
-    print(f"  rides_map columns   : {list(rides_map.columns)}")
-
-    # === STEP 6: CREATE INTERACTIVE MAP ===
+    print(f"\n  ✓ Sanitized data:")
+    print(f"     network_map: {len(network_map)} segments with columns: {list(network_map.columns)}")
+    print(f"     rides_map: {len(rides_map)} rides with columns: {list(rides_map.columns)}")
+        # === STEP 6: CREATE INTERACTIVE MAP ===
     print("\n  Creating interactive map...")
 
     bounds = study_area.total_bounds
