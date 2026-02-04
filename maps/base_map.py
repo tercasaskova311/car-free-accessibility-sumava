@@ -12,7 +12,7 @@ class BaseLayers:
         m = folium.Map(
             location=center,
             zoom_start=zoom,
-            tiles='OpenStreetMap',  
+            tiles=None,  
             control_scale=True,
             zoom_control=True,
             max_zoom=Config.MAX_ZOOM,
@@ -56,8 +56,7 @@ class BaseLayers:
             style_function=lambda x: {
                 'fillColor': 'transparent',
                 'color': Config.COLORS['study_area'],
-                'weight': 3,
-                'dashArray': '10, 5'
+                'weight': 3
             },
             control=False
         ).add_to(m)
@@ -72,19 +71,23 @@ class BaseLayers:
         top_candidate = candidates.iloc[0]
         hottest_segment = network.nlargest(1, 'ride_count').iloc[0]
         
-        # Calculate additional insights
+        # Calculate insights from UNIQUE segments (no double-counting)
+        total_segments = len(network)
         total_trail_km = network['distance_km'].sum()
         avg_segment_traffic = network['ride_count'].mean()
         high_traffic_segments = len(network[network['ride_count'] >= Config.TRAFFIC_THRESHOLDS['medium']])
+        
+        # Average segment length (diagnostic for overlaps)
+        avg_segment_length_km = total_trail_km / total_segments if total_segments > 0 else 0
         
         # Get spatial statistics if available
         global_moran_html = ""
         if hasattr(candidates, 'attrs') and 'global_morans_i' in candidates.attrs:
             gm = candidates.attrs['global_morans_i']
-            sig_status = "Significant" if gm['significant'] else " Not Significant"
+            sig_status = "Significant" if gm['significant'] else "Not Significant"
             global_moran_html = f"""
                 <p style="margin: 8px 0;">
-                    <b style="color: #3498db;">🔬 Global Spatial Autocorrelation:</b><br>
+                    <b style="color: #3498db;">Global Spatial Autocorrelation:</b><br>
                     <span style="font-size: 12px;">
                     • Moran's I: <b>{gm['morans_i']:.4f}</b> (expected: {gm['expected_i']:.4f})<br>
                     • Z-score: {gm['z_score']:.3f} (p={gm['p_value']:.4f}) {sig_status}<br>
@@ -122,25 +125,25 @@ class BaseLayers:
                     <b style="color: #27ae60;">🏆 Optimal Trail Center Location:</b><br>
                     <span style="font-size: 12px;">
                     📍 {top_candidate.geometry.y:.4f}°N, {top_candidate.geometry.x:.4f}°E<br>
-                    - Suitability Score: <b>{top_candidate['suitability_score']:.0f}/100</b><br>
-                    - Local Moran's I: <b>{top_candidate.get('mean_local_morans_i', 0):.3f}</b><br>
-                    - Trail Accessibility: {int(top_candidate['trail_count'])} segments 
-                    ({top_candidate['trail_length_km']:.1f} km within 5 km buffer)<br>
-                    - Hotspot Segments: {int(top_candidate.get('hotspot_segments', 0))}
+                    • Suitability Score: <b>{top_candidate['suitability_score']:.0f}/100</b><br>
+                    • Local Moran's I: <b>{top_candidate.get('mean_local_morans_i', 0):.3f}</b><br>
+                    • Accessible Trails: {int(top_candidate['trail_count'])} unique segments 
+                    ({top_candidate['trail_length_km']:.1f} km within 5 km)<br>
+                    • Hotspot Segments: {int(top_candidate.get('hotspot_segments', 0))}
                     </span>
                 </p>
                 <p style="margin: 8px 0;">
-                    <b style="color: #e74c3c;">Most Popular Trail:</b><br>
+                    <b style="color: #e74c3c;"> Most Popular Trail:</b><br>
                     <span style="font-size: 12px;">
-                    {hottest_segment['ride_count']} recorded activities • {hottest_segment['distance_km']:.1f} km length
+                    {hottest_segment['ride_count']} recorded rides • {hottest_segment['distance_km']:.1f} km length
                     </span>
                 </p>
                 <p style="margin: 8px 0;">
-                    <b style="color: #3498db;">Network Statistics:</b><br>
+                    <b style="color: #3498db;"> Network Statistics:</b><br>
                     <span style="font-size: 12px;">
-                    • Total segments: {len(network)} ({total_trail_km:.1f} km cumulative length)<br>
+                    • Total network length: <b>{total_trail_km:.1f} km</b><br>
                     • High-traffic trails: {high_traffic_segments} segments (≥{Config.TRAFFIC_THRESHOLDS['medium']} rides)<br>
-                    • Mean usage: {avg_segment_traffic:.1f} rides per segment
+                    • Mean usage: {avg_segment_traffic:.1f} rides/segment
                     </span>
                 </p>
                 <p style="margin: 8px 0;">
@@ -148,15 +151,15 @@ class BaseLayers:
                         🌲 Protected Area Compliance:
                     </b><br>
                     <span style="font-size: 12px;">
-{'✅ Located outside Zone A (strictly protected core)<br>Zones B-D/I-IV: Development permitted with restrictions' 
-if not top_candidate.get('in_prohibited_zone', False)
-else '⚠️ Located within Zone A (strictly protected core)<br>Development prohibited - alternative sites required'}
+    {'✅ Outside Zone A (strictly protected core)<br>Development permitted with restrictions' 
+    if not top_candidate.get('in_prohibited_zone', False)
+    else '⚠️ Within Zone A (strictly protected core)<br>Development prohibited - alternative sites required'}
                     </span>
                 </p>
             </div>
             <hr style="margin: 10px 0; border: none; border-top: 1px solid #ecf0f1;">
             <p style="margin: 5px 0; font-size: 10px; color: #95a5a6; text-align: center;">
-                Methodology: Global and Local Moran's I spatial autocorrelation with environmental overlay
+                Methodology: Global and Local Moran's I spatial autocorrelation with environmental constraints
             </p>
         </div>
         """

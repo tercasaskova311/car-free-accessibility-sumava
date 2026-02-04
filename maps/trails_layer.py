@@ -2,48 +2,42 @@ import folium
 from folium.plugins import MarkerCluster
 import geopandas as gpd
 import pandas as pd
+import numpy as np
 from shapely.geometry import Point
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import Config
 
-#adding trail info to the map: 1. base trail map, 2. frequency of usage, 3. trails by lenght
 
 class TrailsLayers:
+    # ------------------------------------------------------------------
+    # Protected zones  (small count — no changes needed)
+    # ------------------------------------------------------------------
     @staticmethod
-    def add_protected_zones(m, zones_gdf):        
-        # Zone colors (A = strictest, darker green)
+    def add_protected_zones(m, zones_gdf):
+        """Add protected zones with legend, no popups"""
         zone_colors = {
-            'A': '#1a5c1a',  # Dark green - core protection
-            'B': '#2d8a2d',  # Medium green
-            'C': '#4caf50',  # Light green
-            'D': '#81c784',  # Very light green
-            'I': '#66bb6a',  # Alternative zones
-            'II': '#81c784',
-            'III': '#a5d6a7',
-            'IV': '#c8e6c9'
+            'A': '#1a5c1a', 'B': '#2d8a2d', 'C': '#4caf50', 'D': '#81c784',
+            'I': '#66bb6a', 'II': '#81c784', 'III': '#a5d6a7', 'IV': '#c8e6c9'
+        }
+        
+        zone_labels = {
+            'A': 'Zone A - Strictly Protected Core',
+            'B': 'Zone B - Managed Protection',
+            'C': 'Zone C - Outer Protection',
+            'D': 'Zone D - Buffer Zone',
+            'I': 'Zone I - CHKO protected area',
+            'II': 'Zone II - CHKO protected area',
+            'III': 'Zone III - CHKO protected area',
+            'IV': 'Zone IV - CHKO protected area'
         }
         
         layer = folium.FeatureGroup(name='Protected Zones', show=True)
         
-        for idx, zone in zones_gdf.iterrows():
-            zone_type = zone.get('ZONA', 'Unknown')
+        for _, zone in zones_gdf.iterrows():
+            zone_type = str(zone.get('ZONA', 'Unknown'))
             color = zone_colors.get(zone_type, '#cccccc')
-            
-            popup_html = f"""
-            <div style="font-family: Arial; min-width: 200px;">
-                <h4 style="margin: 0 0 8px 0; color: {color};">
-                    Zone {zone_type}
-                </h4>
-                <p style="margin: 5px 0; font-size: 12px;">
-                    <b>Protection Level:</b> {'Strictly Protected (Core)' if zone_type == 'A' 
-                        else 'Protected with Restrictions'}<br>
-                    <b>Development:</b> {'❌ Prohibited' if zone_type == 'A' 
-                        else '⚠️ Restricted'}
-                </p>
-            </div>
-            """
             
             folium.GeoJson(
                 zone.geometry,
@@ -51,243 +45,271 @@ class TrailsLayers:
                     'fillColor': c,
                     'color': c,
                     'weight': 1,
-                    'fillOpacity': 0.3,
-                    'opacity': 0.6
+                    'fillOpacity': 0.25,
+                    'opacity': 0.5
                 },
-                popup=folium.Popup(popup_html, max_width=300),
-                tooltip=f"Zone {zone_type}"
+                tooltip=f"Zone {zone_type}"  # Simple hover tooltip
             ).add_to(layer)
         
         layer.add_to(m)
-        print(f"Added {len(zones_gdf)} protected zones to map")
-    
+        
+        # Add legend in lower right corner
+        legend_html = '''
+        <div style="
+            position: fixed;
+            bottom: 50px;
+            right: 20px;
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            z-index: 1000;
+            font-family: Arial;
+            font-size: 12px;
+        ">
+            <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #2c3e50;">
+                🌲 Protection Zones
+            </h4>
+        '''
+        
+        # Add each zone to legend (only zones present in data)
+        present_zones = sorted(zones_gdf['ZONA'].unique())
+        for zone_type in present_zones:
+            if zone_type in zone_colors:
+                color = zone_colors[zone_type]
+                label = zone_labels.get(zone_type, f'Zone {zone_type}')
+                legend_html += f'''
+            <div style="margin: 4px 0; display: flex; align-items: center;">
+                <span style="
+                    display: inline-block;
+                    width: 20px;
+                    height: 12px;
+                    background: {color};
+                    margin-right: 6px;
+                    border: 1px solid #999;
+                    opacity: 0.7;
+                "></span>
+                <span style="font-size: 11px;">{label}</span>
+            </div>
+                '''
+        
+        legend_html += '''
+            <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid #ddd; font-size: 10px; color: #666;">
+                Zone A: Development prohibited
+            </div>
+        </div>
+        '''
+        
+        m.get_root().html.add_child(folium.Element(legend_html))
+        
+        print(f"  ✓ Added {len(zones_gdf)} protected zones with legend")
+    # ------------------------------------------------------------------
+    # Candidate locations  (tiny count — no changes needed)
+    # ------------------------------------------------------------------
     @staticmethod
     def add_candidate_locations(m, candidates_gdf, zones_gdf=None):
-        #Add candidate trail center locations with enhanced LISA-based information
         layer = folium.FeatureGroup(name='Candidate Locations', show=True)
-        
-        # Color scheme based on suitability
-        def get_marker_color(score, prohibited):
-            if prohibited:
-                return 'red'
-            elif score >= 80:
-                return 'darkgreen'
-            elif score >= 60:
-                return 'green'
-            elif score >= 40:
-                return 'orange'
-            else:
-                return 'lightgray'
-        
-        for idx, candidate in candidates_gdf.iterrows():
-            rank = candidate['rank']
-            score = candidate['suitability_score']
-            prohibited = candidate.get('in_prohibited_zone', False)
-            
-            # Marker size based on rank (larger = better)
-            icon_size = max(15, 35 - (rank * 3))
-            
-            popup_html = f"""
-            <div style="font-family: Arial; min-width: 300px;">
-                <h3 style="margin: 0 0 10px 0; color: {get_marker_color(score, prohibited)};">
-                    Candidate #{rank}
-                </h3>
-                
-                <div style="background: #f0f0f0; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-                    <h4 style="margin: 0 0 5px 0;">Suitability Score</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: {get_marker_color(score, prohibited)};">
-                        {score:.1f}/100
-                    </div>
-                </div>
-                
-                <p style="margin: 8px 0; font-size: 13px;">
-                    <b>📍 Location:</b><br>
-                    {candidate.geometry.y:.5f}°N, {candidate.geometry.x:.5f}°E
-                </p>
-                
-                <hr style="margin: 10px 0;">
-                
-                <p style="margin: 8px 0; font-size: 13px;">
-                    <b> Spatial Clustering Analysis:</b><br>
-                    • Local Moran's I: <b>{candidate['mean_local_morans_i']:.3f}</b><br>
-                    • Hotspot Segments: {int(candidate['hotspot_segments'])}<br>
-                    • Clustering Strength: {candidate['clustering_strength']:.2f}
-                </p>
-                
-                <hr style="margin: 10px 0;">
-                
-                <p style="margin: 8px 0; font-size: 13px;">
-                    <b>🚵 Trail Accessibility (5km buffer):</b><br>
-                    • Trail Count: {int(candidate['trail_count'])} segments<br>
-                    • Total Length: {candidate['trail_length_km']:.1f} km<br>
-                    • Total Rides: {int(candidate['total_rides'])}
-                </p>
-                
-                <hr style="margin: 10px 0;">
-                
-                <p style="margin: 8px 0; font-size: 13px;">
-                    <b>🌲 Environmental Status:</b><br>
-                    • Zone: <b>{candidate.get('zone_type', 'Unknown')}</b><br>
-                    • {'❌ PROHIBITED - Located in core protection zone' if prohibited 
-                       else '✅ PERMITTED - Development allowed with restrictions'}
-                </p>
-            </div>
-            """
-            
-            folium.CircleMarker(
-                location=[candidate.geometry.y, candidate.geometry.x],
-                radius=icon_size,
-                popup=folium.Popup(popup_html, max_width=400),
-                tooltip=f"Rank #{rank} | Score: {score:.1f}",
-                color='white',
-                weight=2,
-                fill=True,
-                fillColor=get_marker_color(score, prohibited),
-                fillOpacity=0.8
-            ).add_to(layer)
-            
-            # Add rank label
-            folium.Marker(
-                location=[candidate.geometry.y, candidate.geometry.x],
-                icon=folium.DivIcon(html=f"""
-                    <div style="
-                        font-size: 12px;
-                        font-weight: bold;
-                        color: white;
-                        text-align: center;
-                        text-shadow: 1px 1px 2px black;
-                    ">{rank}</div>
-                """)
-            ).add_to(layer)
-        
-        layer.add_to(m)
-        print(f"✓ Added {len(candidates_gdf)} candidate locations to map")
-    
-    @staticmethod
-    def add_trail_net(m, rides): #base trail map - made out of uploaded GPS data
 
-        for idx, ride in rides.iterrows():
-            color = '#D2B48C'  #light brown
-            
-            folium.GeoJson(
-                ride.geometry,
-                style_function=lambda x, c=color: {
-                    'color': c,
-                    'weight': 1,
-                    'opacity': 1
-                },
-                highlight_function=lambda x: {
-                    'weight': 3,
-                    'opacity': 1
-                },
-                control=False  #always visible as base layer
-            ).add_to(m)
-        
-        print(f"✓ Added {len(rides)} base trail lines to map")
-        
+        def _color(score, prohibited):
+            if prohibited:       return 'red'
+            if score >= 80:      return 'darkgreen'
+            if score >= 60:      return 'green'
+            if score >= 40:      return 'orange'
+            return 'lightgray'
+
+        for _, cand in candidates_gdf.iterrows():
+            rank       = int(cand['rank'])
+            score      = float(cand['suitability_score'])
+            prohibited = bool(cand.get('in_prohibited_zone', False))
+            col        = _color(score, prohibited)
+            radius     = max(15, 35 - rank * 3)
+
+            popup_html = (
+                f'<div style="font-family:Arial;min-width:300px;">'
+                f'<h3 style="margin:0 0 10px 0;color:{col};">Candidate #{rank}</h3>'
+                f'<div style="background:#f0f0f0;padding:10px;border-radius:5px;margin-bottom:10px;">'
+                f'<h4 style="margin:0 0 5px 0;">Suitability Score</h4>'
+                f'<div style="font-size:24px;font-weight:bold;color:{col};">{score:.1f}/100</div></div>'
+                f'<p style="margin:8px 0;font-size:13px;"><b>📍 Location:</b><br>'
+                f'{cand.geometry.y:.5f}°N, {cand.geometry.x:.5f}°E</p><hr style="margin:10px 0;">'
+                f'<p style="margin:8px 0;font-size:13px;"><b>Spatial Clustering:</b><br>'
+                f'• Local Moran\'s I: <b>{float(cand.get("mean_local_morans_i", 0)):.3f}</b><br>'
+                f'• Hotspot Segments: {int(cand.get("hotspot_segments", 0))}<br>'
+                f'• Clustering Strength: {float(cand.get("clustering_strength", 0)):.2f}</p>'
+                f'<hr style="margin:10px 0;">'
+                f'<p style="margin:8px 0;font-size:13px;"><b>🚵 Trail Accessibility (5 km):</b><br>'
+                f'• Segments: {int(cand["trail_count"])}<br>'
+                f'• Length: {float(cand["trail_length_km"]):.1f} km<br>'
+                f'• Rides: {int(cand["total_rides"])}</p>'
+                f'<hr style="margin:10px 0;">'
+                f'<p style="margin:8px 0;font-size:13px;"><b>🌲 Environment:</b><br>'
+                f'• Zone: <b>{cand.get("zone_type", "Unknown")}</b><br>'
+                f'• {"❌ PROHIBITED – core protection zone" if prohibited else "✅ PERMITTED – development allowed with restrictions"}'
+                f'</p></div>'
+            )
+
+            folium.CircleMarker(
+                location=[cand.geometry.y, cand.geometry.x],
+                radius=radius,
+                popup=folium.Popup(popup_html, max_width=200),
+                tooltip=f"Rank #{rank} | Score: {score:.1f}",
+                color='white', weight=1, fill=True,
+                fillColor=col, fillOpacity=0.8
+            ).add_to(layer)
+
+            folium.Marker(
+                location=[cand.geometry.y, cand.geometry.x],
+                icon=folium.DivIcon(html=(
+                    f'<div style="font-size:12px;font-weight:bold;color:white;'
+                    f'text-align:center;text-shadow:1px 1px 2px black;">{rank}</div>'
+                ))
+            ).add_to(layer)
+
+        layer.add_to(m)
+        print(f"  ✓ Added {len(candidates_gdf)} candidate locations")
+
+    # ------------------------------------------------------------------
+    # Base trail layer
+    # ------------------------------------------------------------------
+    # Single batched GeoJson, subsampled, simplified.
+    # ------------------------------------------------------------------
     @staticmethod
-    def add_trail_network(m, network):
-        #differ trails by the frequency of usage  (low, medium, high)       
-        def get_traffic_color(ride_count):
-            if ride_count >= Config.TRAFFIC_THRESHOLDS['medium']:
-                return Config.COLORS['high_traffic']
-            elif ride_count >= Config.TRAFFIC_THRESHOLDS['low']:
-                return Config.COLORS['medium_traffic']
-            else:
-                return Config.COLORS['low_traffic']
+    def add_trail_net(m, rides):
+        sample_size = Config.BASE_TRAIL_SAMPLE_SIZE   # 500
+        simplify    = Config.RENDER_SIMPLIFY_M        # 10 m
+
+        # Only geometry — nothing else goes to the HTML
+        display = rides[['geometry']].copy()
+
+        # Simplify
+        display_proj = display.to_crs("EPSG:32633")
+        display_proj['geometry'] = display_proj.geometry.simplify(simplify)
+        display = display_proj.to_crs("EPSG:4326")
+
+        if len(display) > sample_size:
+            display = display.sample(n=sample_size, random_state=42)
+            print(f"   ⚡ Base trail layer subsampled: {len(rides)} → {sample_size}")
+
+        layer = folium.FeatureGroup(name='Trail Network', show=True)
         
-        layer = folium.FeatureGroup(name='Popularity of trails', show=True)
-        
-        for idx, segment in network.iterrows():  #iterate over network - not ride!
-            ride_count = segment.get('ride_count', 0)
-            color = get_traffic_color(ride_count)  
+        def _create_popup(feature):
+            rc = feature['properties'].get('ride_count', 0)
+            length = feature['properties'].get('distance_km', 0)
             
-            # Build list of rides for this segment (handle missing 'rides' column)
-            rides_info = segment.get('rides', [])
-            if rides_info and len(rides_info) > 0:
-                rides_list_html = "<br>".join([
-                    f"• {r.get('distance_km', 0):.1f}km (ID: {r.get('activity_id', 'N/A')})" 
-                    for r in rides_info[:Config.MAX_RIDES_IN_POPUP]
-                ])
-                
-                if len(rides_info) > Config.MAX_RIDES_IN_POPUP:
-                    rides_list_html += f"<br>...and {len(rides_info) - Config.MAX_RIDES_IN_POPUP} more"
+            if rc >= 7:
+                popularity = "🔥 Popular Trail"
+                color = "#d62728"
+            elif rc >= 3:
+                popularity = "Moderate Usage"
+                color = "#ff7f0e"
             else:
-                rides_list_html = "No ride details available"
+                popularity = "Quiet Trail"
+                color = "#1f77b4"
             
-            #pop up for segments - show a list of rides which pass thought that given point in the map
-            popup_html = f"""
-            <div style='font-family: Arial; min-width: 250px;'>
-                <h4 style='margin: 0 0 10px 0; color: {color};'>
-                    Trail Segment #{segment.get('segment_id', idx)}
-                </h4>
-                <p style='margin: 5px 0; font-size: 13px;'>
-                    <b>Popularity:</b> {ride_count} rides<br>
-                    <b>Length:</b> {segment.get('distance_km', 0):.1f} km
-                </p>
-                <hr style='margin: 10px 0;'>
-                <p style='font-size: 12px; margin: 5px 0;'>
-                    <b>Rides using this trail:</b><br>
-                    {rides_list_html}
+            return f"""
+            <div style="font-family: Arial; min-width: 200px;">
+                <h4 style="margin: 0 0 8px 0; color: {color};">{popularity}</h4>
+                <p style="margin: 5px 0; font-size: 12px;">
+                    <b>Total rides:</b> {rc}<br>
+                    <b>Trail length:</b> {length:.1f} km<br>
+                    <b>Rides/km:</b> {(rc/length if length > 0 else 0):.1f}
                 </p>
             </div>
             """
+        
+        for _, row in export.iterrows():
+            feature = {
+                'type': 'Feature',
+                'properties': {
+                    'ride_count': row['ride_count'],
+                    'distance_km': row['distance_km']
+                },
+                'geometry': row['geometry'].__geo_interface__
+            }
             
             folium.GeoJson(
-                segment.geometry,  
-                style_function=lambda x, c=color: {
-                    'color': c,
-                    'weight': 4,
-                    'opacity': 0.8
+                feature,
+                style_function=lambda x: {
+                    'color': '#8B7355',
+                    'weight': 2,
+                    'opacity': 0.6
                 },
-                highlight_function=lambda x: {
-                    'weight': 6,
-                    'opacity': 1.0
-                },
-                popup=folium.Popup(popup_html, max_width=350),
-                tooltip=f"{ride_count} rides • {segment.get('distance_km', 0):.1f}km"
-            ).add_to(layer)  
+                highlight_function=lambda x: {'weight': 4, 'opacity': 1.0},
+                popup=folium.Popup(_create_popup(feature), max_width=250),
+                tooltip=f"{row['ride_count']} rides"
+            ).add_to(layer)
         
         layer.add_to(m)
-        print(f"✓ Added {len(network)} trail segments to map")  
-    
+        print(f"  ✓ Trail network added ({len(display)} segments with popups)")
+      
+    # ------------------------------------------------------------------
+    # Rides by length
+    # ------------------------------------------------------------------
+    # Subsampled per category + Categorical cast to str so folium
+    # can serialise it without choking.
+    # ------------------------------------------------------------------
     @staticmethod
     def add_rides_by_length(m, rides):
+        simplify          = Config.RENDER_SIMPLIFY_M
+        MAX_PER_CATEGORY  = 500
 
-        # split rides by km(short, medium, long)
+        rides = rides.copy()
         rides['length_category'] = pd.cut(
             rides['distance_km'],
             bins=[0, 25, 50, float('inf')],
-            labels=['Short (0-25 km)', 'Medium (25-50km)', 
-                    'Long (50+)']
+            labels=['Short (0-25 km)', 'Medium (25-50 km)', 'Long (50+ km)']
         )
-        
+        # Cast Categorical → str  (folium can't serialise Categorical)
+        rides['length_category'] = rides['length_category'].astype(str)
+
         colors_by_length = {
-            'Short (0-25 km)': '#9b59b6',    # light purple
-            'Medium (25-50km)': '#8e44ad',  # strong purple
-            'Long (50+)': '#5e3370'     # dark violet
+            'Short (0-25 km)':   '#9b59b6',
+            'Medium (25-50 km)': '#8e44ad',
+            'Long (50+ km)':     '#5e3370'
         }
-        
-        for category in rides['length_category'].dropna().unique():
-            subset = rides[rides['length_category'] == category]
+
+        # Simplify once
+        rides_proj = rides.to_crs("EPSG:32633")
+        rides_proj['geometry'] = rides_proj.geometry.simplify(simplify)
+        rides = rides_proj.to_crs("EPSG:4326")
+
+        for category in rides['length_category'].unique():
+            if category == 'nan':
+                continue
+
+            subset = rides[rides['length_category'] == category].copy()
+            color  = colors_by_length.get(category, '#9b59b6')
+
+            # Subsample
+            if len(subset) > MAX_PER_CATEGORY:
+                subset = subset.sample(n=MAX_PER_CATEGORY, random_state=42)
+                print(f"   ⚡ {category}: subsampled to {MAX_PER_CATEGORY}")
+
+            # Only the columns folium needs
+            export_cols = ['geometry']
+            if 'activity_id' in subset.columns:
+                export_cols.append('activity_id')
+            if 'distance_km' in subset.columns:
+                export_cols.append('distance_km')
+
+            export = subset[export_cols].copy()
 
             layer = folium.FeatureGroup(
                 name=f'{category} ({len(subset)})',
                 show=False
             )
 
-            # all rides in category as single GeoJson - in order to speedup
             folium.GeoJson(
-                subset[['geometry', 'activity_id', 'distance_km']],
-                style_function=lambda x, c=colors_by_length.get(category, '#9b59b6'): {
-                    'color': c,
-                    'weight': 3,
-                    'opacity': 0.7
+                export,
+                style_function=lambda x, c=color: {
+                    'color': c, 'weight': 1, 'opacity': 0.8
                 },
                 tooltip=folium.GeoJsonTooltip(
-                    fields=['activity_id', 'distance_km'],
+                    fields=[f for f in ['activity_id', 'distance_km'] if f in export_cols],
                     aliases=['Ride:', 'Distance (km):']
                 )
             ).add_to(layer)
-            
+
             layer.add_to(m)
+
+        print("  ✓ Rides-by-length layers added")

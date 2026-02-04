@@ -6,43 +6,43 @@ from esda.moran import Moran, Moran_Local
 import pandas as pd
 from pathlib import Path
 
-class SpatialAutocorrelation: 
-#Uses Moran's I to identify statistically significant clustering => Spatial autocorrelation analysis for trail network hotspots.
-    
+class SpatialAutocorrelation:
+    """Moran's I spatial autocorrelation analysis for trail network hotspots."""
+
+    # ----------------------------------------------------------------------
+    # Global Moran's I
+    # ----------------------------------------------------------------------
     @staticmethod
     def calculate_global_morans_i(network_proj, attribute='ride_count', distance_threshold=2000):
+        """Test for global spatial autocorrelation in trail usage."""
 
-        #Test for global spatial autocorrelation in trail usage.
-    
-        centroids = network_proj.geometry.centroid #Create spatial weights matrix based on distance
+        centroids = network_proj.geometry.centroid
         coords = np.column_stack([centroids.x, centroids.y])
-        
-        w = DistanceBand.from_array(coords, threshold=distance_threshold, binary=True) #Distance-based weights
 
+        w = DistanceBand.from_array(coords, threshold=distance_threshold, binary=True)
         w.transform = 'r'  # Row-standardized
-        
-        y = network_proj[attribute].values # Calculate Global Moran's I
 
+        y = network_proj[attribute].values
         moran = Moran(y, w)
-        
+
         result = {
-            'morans_i': moran.I,
-            'expected_i': moran.EI,
-            'p_value': moran.p_sim,
-            'z_score': moran.z_sim,
-            'significant': moran.p_sim < 0.05,
+            'morans_i':      moran.I,
+            'expected_i':    moran.EI,
+            'p_value':       moran.p_sim,
+            'z_score':       moran.z_sim,
+            'significant':   moran.p_sim < 0.05,
             'interpretation': SpatialAutocorrelation._interpret_global_moran(moran)
         }
-        
-        print(f"global moran's I")
-        print(f"Moran's I: {result['morans_i']:.4f}")
-        print(f"Expected I: {result['expected_i']:.4f}")
-        print(f"Z-score: {result['z_score']:.4f}")
-        print(f"P-value: {result['p_value']:.4f}")
-        print(f"Interpretation: {result['interpretation']}")
-        
+
+        print("global moran's I")
+        print(f"  Moran's I:      {result['morans_i']:.4f}")
+        print(f"  Expected I:     {result['expected_i']:.4f}")
+        print(f"  Z-score:        {result['z_score']:.4f}")
+        print(f"  P-value:        {result['p_value']:.4f}")
+        print(f"  Interpretation: {result['interpretation']}")
+
         return result
-    
+
     @staticmethod
     def _interpret_global_moran(moran):
         if moran.p_sim >= 0.05:
@@ -51,260 +51,250 @@ class SpatialAutocorrelation:
             return "Significant positive autocorrelation (high-traffic trails cluster together)"
         else:
             return "Significant negative autocorrelation (high/low trails are dispersed)"
-    
+
+    # ----------------------------------------------------------------------
+    # Local Moran's I  (LISA)
+    # ----------------------------------------------------------------------
     @staticmethod
     def calculate_local_morans_i(network_proj, attribute='ride_count', distance_threshold=2000):
-        #local hotspots/coldspots using Local Moran's I (LISA).
-    
+        """Identify local hotspots / coldspots using LISA."""
+
         centroids = network_proj.geometry.centroid
         coords = np.column_stack([centroids.x, centroids.y])
-        
-        # Create spatial weights
+
         w = DistanceBand.from_array(coords, threshold=distance_threshold, binary=True)
         w.transform = 'r'
-        
-        # Calculate Local Moran's I
+
         y = network_proj[attribute].values
         lisa = Moran_Local(y, w)
-        
-        # Add results to network
+
         network_with_lisa = network_proj.copy()
-        network_with_lisa['local_i'] = lisa.Is
-        network_with_lisa['p_value'] = lisa.p_sim
-        network_with_lisa['z_score'] = lisa.z_sim
+        network_with_lisa['local_i']     = lisa.Is
+        network_with_lisa['p_value']     = lisa.p_sim
+        network_with_lisa['z_score']     = lisa.z_sim
         network_with_lisa['significant'] = lisa.p_sim < 0.05
-        
-        # Classify into quadrants
+
         network_with_lisa['cluster_type'] = SpatialAutocorrelation._classify_lisa_quadrants(
             lisa, network_proj[attribute].values
         )
-        
-        # Summary statistics
+
         hotspots = network_with_lisa[
-            (network_with_lisa['cluster_type'] == 'High-High') & 
+            (network_with_lisa['cluster_type'] == 'High-High') &
             (network_with_lisa['significant'] == True)
         ]
-        
-        print(f"local moran's I")
-        print(f"Total segments analyzed: {len(network_with_lisa)}")
-        print(f"Significant hotspots (High-High): {len(hotspots)}")
-        print(f"Mean Local I (hotspots): {hotspots['local_i'].mean():.4f}")
-        
+
+        print("local moran's I")
+        print(f"  Total segments analysed:        {len(network_with_lisa)}")
+        print(f"  Significant hotspots (HH):      {len(hotspots)}")
+        print(f"  Mean Local I (hotspots):         {hotspots['local_i'].mean():.4f}")
+
         return network_with_lisa
-    
+
     @staticmethod
     def _classify_lisa_quadrants(lisa, y):
-
         classifications = []
         y_mean = y.mean()
-        
-        for i, (local_i, is_sig) in enumerate(zip(lisa.Is, lisa.p_sim)):
-            if not is_sig or lisa.p_sim[i] >= 0.05:
+
+        for i in range(len(lisa.Is)):
+            if lisa.p_sim[i] >= 0.05:
                 classifications.append('Not Significant')
                 continue
-            
-            if y[i] > y_mean and lisa.q[i] == 1:  # HH
+
+            if   y[i] > y_mean and lisa.q[i] == 1:
                 classifications.append('High-High')
-            elif y[i] < y_mean and lisa.q[i] == 3:  # LL
+            elif y[i] < y_mean and lisa.q[i] == 3:
                 classifications.append('Low-Low')
-            elif y[i] > y_mean and lisa.q[i] == 2:  # LH
+            elif y[i] > y_mean and lisa.q[i] == 2:
                 classifications.append('High-Low')
-            elif y[i] < y_mean and lisa.q[i] == 4:  # HL
+            elif y[i] < y_mean and lisa.q[i] == 4:
                 classifications.append('Low-High')
             else:
                 classifications.append('Not Significant')
-        
+
         return classifications
 
 
+# ======================================================================
 class LocationAnalyzer:
-    #location suitability analysis using spatial statistics.
-    
+    """Location suitability using spatial statistics."""
+
+    # ----------------------------------------------------------------------
+    # 1.  Candidate extraction from HH hotspot clusters
+    # ----------------------------------------------------------------------
     @staticmethod
     def find_candidate_locations(network_proj, min_traffic=5):
-        #candidate locations from High-High hotspot clusters.
+        """Pull candidate locations from High-High hotspot clusters."""
 
-        #statistically significant hotspots
         hotspots = network_proj[
-            (network_proj['cluster_type'] == 'High-High') & 
+            (network_proj['cluster_type'] == 'High-High') &
             (network_proj['significant'] == True) &
             (network_proj['ride_count'] >= min_traffic)
         ].copy()
-        
+
         if len(hotspots) == 0:
-            print("️no significant hotspots found")
+            print("⚠️  No significant hotspots found")
             return None
-        
-        # Group hotspots
+
         from sklearn.cluster import DBSCAN
         centroids = hotspots.geometry.centroid
         coords = np.column_stack([centroids.x, centroids.y])
-        
-        # Use DBSCAN to group hotspots into zones
+
         db = DBSCAN(eps=2000, min_samples=2).fit(coords)
         hotspots['spatial_group'] = db.labels_
-        
-        #candidate from each group
+
         candidates = []
         for group_id in set(db.labels_):
-            if group_id == -1:  # Skip noise points
+            if group_id == -1:
                 continue
-            
+
             group_segs = hotspots[hotspots['spatial_group'] == group_id]
-            
-            # Weighted centroid by Local Moran's I strength
+
             weights = group_segs['local_i'].values
             center = np.average(
-                np.column_stack([group_segs.geometry.centroid.x, 
-                               group_segs.geometry.centroid.y]),
+                np.column_stack([group_segs.geometry.centroid.x,
+                                 group_segs.geometry.centroid.y]),
                 axis=0, weights=weights
             )
-            
+
             candidates.append({
-                'geometry': Point(center),
-                'hotspot_segments': len(group_segs),
-                'total_rides': group_segs['ride_count'].sum(),
-                'mean_local_morans_i': group_segs['local_i'].mean(),
-                'clustering_strength': group_segs['local_i'].sum()  # Higher = stronger cluster
+                'geometry':              Point(center),
+                'hotspot_segments':      len(group_segs),
+                'total_rides':           int(group_segs['ride_count'].sum()),
+                'mean_local_morans_i':   float(group_segs['local_i'].mean()),
+                'clustering_strength':   float(group_segs['local_i'].sum()),
             })
-        
-        print(f"identified {len(candidates)} candidate zones from {len(hotspots)} hotspot segments")
-        
+
+        print(f"  identified {len(candidates)} candidate zones from {len(hotspots)} hotspot segments")
         return gpd.GeoDataFrame(candidates, crs="EPSG:32633", geometry='geometry')
-    
+
+    # ----------------------------------------------------------------------
+    # 2.  Trail accessibility within buffer
+    # ----------------------------------------------------------------------
     @staticmethod
     def calculate_trail_access(candidates, network_proj, radius_m=5000):
-        #trail accessibility metrics within buffer radius - radius 5km based by international standards for trail building
-        for col in ['trail_count', 'trail_length_km', 'total_rides']:
-            candidates[col] = 0
-        
+        """Count trails within radius of each candidate."""
+
+        # FIX: initialise with correct dtypes so .at[] assignment doesn't warn
+        candidates['trail_count']     = pd.array([0] * len(candidates), dtype='int64')
+        candidates['trail_length_km'] = pd.array([0.0] * len(candidates), dtype='float64')
+        candidates['total_rides']     = pd.array([0] * len(candidates), dtype='int64')
+
         for idx, candidate in candidates.iterrows():
             buffer = candidate.geometry.buffer(radius_m)
             nearby = network_proj[network_proj.geometry.intersects(buffer)]
-            
-            candidates.at[idx, 'trail_count'] = len(nearby)
-            candidates.at[idx, 'trail_length_km'] = nearby['distance_km'].sum()
-            candidates.at[idx, 'total_rides'] = nearby['ride_count'].sum()
-        
+
+            candidates.at[idx, 'trail_count']     = int(len(nearby))
+            candidates.at[idx, 'trail_length_km'] = float(nearby['distance_km'].sum())
+            candidates.at[idx, 'total_rides']     = int(nearby['ride_count'].sum())
+
         return candidates
-    
+
+    # ----------------------------------------------------------------------
+    # 3.  Environmental constraints
+    # ----------------------------------------------------------------------
     @staticmethod
     def check_environmental_constraints(candidates, zones_proj):
-        #check if candidates fall in protected = prohibited zones 
+        """Check whether candidates fall inside prohibited zones."""
         if zones_proj is None:
             candidates['in_prohibited_zone'] = False
             candidates['zone_type'] = 'Unknown'
             return candidates
-        
-        joined = gpd.sjoin(candidates, zones_proj[['ZONA', 'geometry']], 
-                          how='left', predicate='within')
-        
-        candidates['zone_type'] = joined['ZONA'].fillna('None')
+
+        joined = gpd.sjoin(candidates, zones_proj[['ZONA', 'geometry']],
+                           how='left', predicate='within')
+
+        candidates['zone_type']         = joined['ZONA'].fillna('None')
         candidates['in_prohibited_zone'] = (candidates['zone_type'] == 'A')
-        
+
         return candidates
-    
+
+    # ----------------------------------------------------------------------
+    # 4.  Composite scoring
+    # ----------------------------------------------------------------------
     @staticmethod
     def calculate_composite_scores(candidates):
-        #final score for choosing the trail center location: 
-        #Trail accessibility (30%), Usage intensity (30%), Clustering strength (Local Moran's I) (40%), Environmental compliance (Zone A = disqualified)
-    
+        """
+        Final suitability score (0-100):
+            Trail accessibility          30 %
+            Usage intensity              30 %
+            Clustering strength (LISA)   40 %
+            Zone A  →  disqualified (score = 0)
+        """
         df = candidates.copy()
-        
-        # Normalize metrics to 0-100
+
         def normalize(series):
             if series.max() == series.min():
-                return pd.Series([50] * len(series))
-            return ((series - series.min()) / (series.max() - series.min())) * 100
-        
-        # Composite score with spatial statistics weight
+                return pd.Series([50.0] * len(series), index=series.index)
+            return ((series - series.min()) / (series.max() - series.min())) * 100.0
+
         df['accessibility_score'] = normalize(df['trail_count'])
-        df['usage_score'] = normalize(df['total_rides'])
-        df['clustering_score'] = normalize(df['mean_local_morans_i'])
-        
+        df['usage_score']         = normalize(df['total_rides'])
+        df['clustering_score']    = normalize(df['mean_local_morans_i'])
+
         df['suitability_score'] = (
             df['accessibility_score'] * 0.30 +
-            df['usage_score'] * 0.30 +
-            df['clustering_score'] * 0.40
+            df['usage_score']         * 0.30 +
+            df['clustering_score']    * 0.40
         )
-        
-        # Zone A penalty (complete disqualification)
-        df.loc[df['in_prohibited_zone'], 'suitability_score'] = 0
-        
-        # Rank by score
+
+        # Zone A penalty
+        df.loc[df['in_prohibited_zone'], 'suitability_score'] = 0.0
+
         df['rank'] = df['suitability_score'].rank(ascending=False, method='dense').astype(int)
-        
+
         return df.sort_values('suitability_score', ascending=False)
-    
+
+    # ----------------------------------------------------------------------
+    # 5.  Full pipeline
+    # ----------------------------------------------------------------------
     @staticmethod
     def analyze(network, rides, study_area, protected_zones=None):
         """
-        Complete spatial analysis workflow with Moran's I.
-        
         Pipeline:
-        1. Calculate Global Moran's I (test for overall clustering)
-        2. Calculate Local Moran's I (identify specific hotspots)
-        3. Extract candidate locations from High-High clusters
-        4. Calculate accessibility metrics
-        5. Check environmental constraints
-        6. Compute composite suitability scores
+            1. Global Moran's I
+            2. Local Moran's I  → LISA quadrants
+            3. Extract candidates from HH clusters
+            4. Accessibility metrics
+            5. Environmental constraints
+            6. Composite scores
         """
-        # Project to metric CRS
         network_proj = network.to_crs("EPSG:32633")
-        zones_proj = protected_zones.to_crs("EPSG:32633") if protected_zones is not None else None
-        
-        # STEP 1: Global spatial autocorrelation
+        zones_proj   = protected_zones.to_crs("EPSG:32633") if protected_zones is not None else None
+
+        # 1
         global_moran = SpatialAutocorrelation.calculate_global_morans_i(
-            network_proj, 
-            attribute='ride_count',
-            distance_threshold=2000
+            network_proj, attribute='ride_count', distance_threshold=2000
         )
-        
-        # STEP 2: Local hotspot identification
+        # 2
         network_with_lisa = SpatialAutocorrelation.calculate_local_morans_i(
-            network_proj,
-            attribute='ride_count',
-            distance_threshold=2000
+            network_proj, attribute='ride_count', distance_threshold=2000
         )
-        
-        # STEP 3: Find candidate locations from hotspots
-        candidates = LocationAnalyzer.find_candidate_locations(
-            network_with_lisa, 
-            min_traffic=5
-        )
-        
+        # 3
+        candidates = LocationAnalyzer.find_candidate_locations(network_with_lisa, min_traffic=5)
         if candidates is None:
-            print("no suitable candidates found")
+            print("⚠️  No suitable candidates found")
             return None
-        
-        # STEP 4: Calculate trail accessibility
-        candidates = LocationAnalyzer.calculate_trail_access(
-            candidates, 
-            network_proj, 
-            radius_m=5000
-        )
-        
-        # STEP 5: Environmental constraints
-        candidates = LocationAnalyzer.check_environmental_constraints(
-            candidates, 
-            zones_proj
-        )
-        
-        # STEP 6: Composite scoring
+
+        # 4
+        candidates = LocationAnalyzer.calculate_trail_access(candidates, network_proj, radius_m=5000)
+        # 5
+        candidates = LocationAnalyzer.check_environmental_constraints(candidates, zones_proj)
+        # 6
         results = LocationAnalyzer.calculate_composite_scores(candidates)
-        
-        # Store global statistics for reporting
+
+        # Attach global stats for the info panel
         results.attrs['global_morans_i'] = global_moran
-        
-        # Convert back to original CRS
+
         return results.to_crs(network.crs)
-    
+
+    # ----------------------------------------------------------------------
+    # 6.  Persist
+    # ----------------------------------------------------------------------
     @staticmethod
     def save_results(results, output_path):
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Select columns for export
+
         export_cols = [
             'rank', 'suitability_score', 'geometry',
             'trail_count', 'trail_length_km', 'total_rides',
@@ -312,15 +302,17 @@ class LocationAnalyzer:
             'in_prohibited_zone', 'zone_type',
             'hotspot_segments'
         ]
-        
+
         results[export_cols].to_file(output_path, driver='GPKG')
         print(f"✓ Results saved to {output_path}")
-        
-        # Print summary
-        print(f"candidates")
-        for idx, row in results.head(5).iterrows():
-            print(f"\n{row['rank']}. Location ({row.geometry.y:.4f}°N, {row.geometry.x:.4f}°E)")
-            print(f"   Suitability Score: {row['suitability_score']:.1f}/100")
-            print(f"   Clustering Strength (Local I): {row['mean_local_morans_i']:.3f}")
-            print(f"   Trail Access: {int(row['trail_count'])} segments, {row['trail_length_km']:.1f}km")
-            print(f"   Zone: {row['zone_type']} {'ROHIBITED' if row['in_prohibited_zone'] else '✓'}")
+
+        print("\ncandidates")
+        for _, row in results.head(5).iterrows():
+            print(f"\n  {int(row['rank'])}. Location "
+                  f"({row.geometry.y:.4f}°N, {row.geometry.x:.4f}°E)")
+            print(f"     Suitability Score:          {row['suitability_score']:.1f}/100")
+            print(f"     Clustering Strength (I):    {row['mean_local_morans_i']:.3f}")
+            print(f"     Trail Access:               {int(row['trail_count'])} segments, "
+                  f"{row['trail_length_km']:.1f} km")
+            print(f"     Zone: {row['zone_type']}  "
+                  f"{'❌ PROHIBITED' if row['in_prohibited_zone'] else '✓ PERMITTED'}")
