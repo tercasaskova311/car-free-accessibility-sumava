@@ -174,39 +174,63 @@ class TrailsLayers:
     # ------------------------------------------------------------------
     @staticmethod
     def add_trail_net(m, network):
-        """Add trail network as a simple, clean layer for a dark base map."""
-        simplify     = Config.RENDER_SIMPLIFY_M
-        # Keep only geometry for display
-        display = network[['geometry']].copy()
+        """Add trail network with traffic-based coloring - FIXED VERSION"""
+        sample_size = Config.BASE_TRAIL_SAMPLE_SIZE   # 500
+        simplify    = Config.RENDER_SIMPLIFY_M        # 10 m
 
-        # Simplify geometry for performance
+        # Keep only essential columns for display
+        essential_cols = ['geometry', 'ride_count', 'distance_km']
+        display = network[essential_cols].copy()
+
+        # Simplify geometry
         display_proj = display.to_crs("EPSG:32633")
         display_proj['geometry'] = display_proj.geometry.simplify(simplify)
         display = display_proj.to_crs("EPSG:4326")
 
+        # Subsample if needed
+        if len(display) > sample_size:
+            display = display.sample(n=sample_size, random_state=42)
+            print(f"   ⚡ Base trail layer subsampled: {len(network)} → {sample_size}")
+
         layer = folium.FeatureGroup(name='Trail Network', show=True)
-
-        # Simple style: bright color for dark background
+        
+        # Use single batched GeoJson instead of per-row iteration
         def style_function(feature):
+            rc = feature['properties'].get('ride_count', 0)
+            if rc >= 7:
+                color = "#d62728"  # Red - high traffic
+                weight = 3
+            elif rc >= 3:
+                color = "#ff7f0e"  # Orange - medium traffic
+                weight = 2.5
+            else:
+                color = "#1f77b4"  # Blue - low traffic
+                weight = 2
+            
             return {
-                'color': '#f2b632',  # golden-orange trails
-                'weight': 2,
-                'opacity': 0.9
+                'color': color,
+                'weight': weight,
+                'opacity': 0.7
             }
-
-        # Add all trails in a single GeoJson layer
+        
+        def highlight_function(feature):
+            return {'weight': 5, 'opacity': 1.0}
+        
+        # Single GeoJson call for all segments
         folium.GeoJson(
             display,
             style_function=style_function,
+            highlight_function=highlight_function,
             tooltip=folium.GeoJsonTooltip(
-                fields=[],
-                labels=False
+                fields=['ride_count', 'distance_km'],
+                aliases=['Rides:', 'Length (km):'],
+                labels=True
             )
         ).add_to(layer)
-
+        
         layer.add_to(m)
-        print(f"  ✓ Base trail network added ({len(display)} segments)")
-
+        print(f"  ✓ Trail network added ({len(display)} segments)")
+      
     # ------------------------------------------------------------------
     # FIXED: Rides by length - optimized
     # ------------------------------------------------------------------
