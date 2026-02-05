@@ -11,9 +11,6 @@ from config import Config
 
 
 class TrailsLayers:
-    # ------------------------------------------------------------------
-    # Protected zones  (small count — no changes needed)
-    # ------------------------------------------------------------------
     @staticmethod
     def add_protected_zones(m, zones_gdf):
         """Add protected zones with legend, no popups"""
@@ -104,84 +101,57 @@ class TrailsLayers:
         
         print(f"  ✓ Added {len(zones_gdf)} protected zones with legend")
     
-    # ------------------------------------------------------------------
-    # Candidate locations  (tiny count — no changes needed)
-    # ------------------------------------------------------------------
+
     @staticmethod
-    def add_candidate_locations(m, candidates_gdf, zones_gdf=None):
+    def add_candidate_locations(m, candidates, protected_zones=None):
         layer = folium.FeatureGroup(name='Candidate Locations', show=True)
+        if candidates is None or len(candidates) == 0:
+            return
 
-        def _color(score, prohibited):
-            if prohibited:       return 'red'
-            if score >= 80:      return 'darkgreen'
-            if score >= 60:      return 'green'
-            if score >= 40:      return 'orange'
-            return 'lightgray'
+        top_k = min(3, len(candidates))
 
-        for _, cand in candidates_gdf.iterrows():
-            rank       = int(cand['rank'])
-            score      = float(cand['suitability_score'])
-            prohibited = bool(cand.get('in_prohibited_zone', False))
-            col        = _color(score, prohibited)
-            radius     = max(15, 35 - rank * 3)
+        for i in range(top_k):
+            row = candidates.iloc[i]
 
-            popup_html = (
-                f'<div style="font-family:Arial;min-width:300px;">'
-                f'<h3 style="margin:0 0 10px 0;color:{col};">Candidate #{rank}</h3>'
-                f'<div style="background:#f0f0f0;padding:10px;border-radius:5px;margin-bottom:10px;">'
-                f'<h4 style="margin:0 0 5px 0;">Suitability Score</h4>'
-                f'<div style="font-size:24px;font-weight:bold;color:{col};">{score:.1f}/100</div></div>'
-                f'<p style="margin:8px 0;font-size:13px;"><b>📍 Location:</b><br>'
-                f'{cand.geometry.y:.5f}°N, {cand.geometry.x:.5f}°E</p><hr style="margin:10px 0;">'
-                f'<p style="margin:8px 0;font-size:13px;"><b>Spatial Clustering:</b><br>'
-                f'• Local Moran\'s I: <b>{float(cand.get("mean_local_morans_i", 0)):.3f}</b><br>'
-                f'• Hotspot Segments: {int(cand.get("hotspot_segments", 0))}<br>'
-                f'• Clustering Strength: {float(cand.get("clustering_strength", 0)):.2f}</p>'
-                f'<hr style="margin:10px 0;">'
-                f'<p style="margin:8px 0;font-size:13px;"><b>🚵 Trail Accessibility (5 km):</b><br>'
-                f'• Segments: {int(cand["trail_count"])}<br>'
-                f'• Length: {float(cand["trail_length_km"]):.1f} km<br>'
-                f'• Rides: {int(cand["total_rides"])}</p>'
-                f'<hr style="margin:10px 0;">'
-                f'<p style="margin:8px 0;font-size:13px;"><b>🌲 Environment:</b><br>'
-                f'• Zone: <b>{cand.get("zone_type", "Unknown")}</b><br>'
-                f'• {"❌ PROHIBITED – core protection zone" if prohibited else "✅ PERMITTED – development allowed with restrictions"}'
-                f'</p></div>'
-            )
+            rank = int(row['rank'])
+            score = row['suitability_score']
+
+            # Visual encoding
+            if rank == 1:
+                color = 'yellow'
+                radius = 14
+            elif rank == 2:
+                color = 'orange'
+                radius = 11
+            else:
+                color = 'pink'
+                radius = 9
+
+            popup_html = f"""
+            <b>Candidate #{rank}</b><br>
+            Score: {score:.1f}/100<br>
+            Trails (unique): {row['unique_trail_length_km']:.1f} km<br>
+            Total rides: {int(row['total_rides'])}<br>
+            Zone: {row['zone_type']}
+            """
 
             folium.CircleMarker(
-                location=[cand.geometry.y, cand.geometry.x],
+                location=[row.geometry.y, row.geometry.x],
                 radius=radius,
-                popup=folium.Popup(popup_html, max_width=200),
-                tooltip=f"Rank #{rank} | Score: {score:.1f}",
-                color='white', weight=1, fill=True,
-                fillColor=col, fillOpacity=0.8
+                color=color,
+                fill=True,
+                fill_color=color,
+                fill_opacity=0.85,
+                popup=popup_html
             ).add_to(layer)
-
-            folium.Marker(
-                location=[cand.geometry.y, cand.geometry.x],
-                icon=folium.DivIcon(html=(
-                    f'<div style="font-size:12px;font-weight:bold;color:white;'
-                    f'text-align:center;text-shadow:1px 1px 2px black;">{rank}</div>'
-                ))
-            ).add_to(layer)
-
         layer.add_to(m)
-        print(f"  ✓ Added {len(candidates_gdf)} candidate locations")
 
-    # ------------------------------------------------------------------
-    # FIXED: Base trail layer (network segments with traffic coloring)
-    # ------------------------------------------------------------------
     @staticmethod
     def add_trail_net(m, network):
-        """Add trail network with traffic-based coloring - FIXED VERSION"""
+
         sample_size = Config.BASE_TRAIL_SAMPLE_SIZE   # 500
         simplify    = Config.RENDER_SIMPLIFY_M        # 10 m
-
-        # Keep only essential columns for display
-        essential_cols = ['geometry', 'ride_count', 'distance_km']
-        display = network[essential_cols].copy()
-
+        display = network.copy()
         # Simplify geometry
         display_proj = display.to_crs("EPSG:32633")
         display_proj['geometry'] = display_proj.geometry.simplify(simplify)
@@ -193,107 +163,48 @@ class TrailsLayers:
             print(f"   ⚡ Base trail layer subsampled: {len(network)} → {sample_size}")
 
         layer = folium.FeatureGroup(name='Trail Network', show=True)
-        
-        # Use single batched GeoJson instead of per-row iteration
-        def style_function(feature):
-            rc = feature['properties'].get('ride_count', 0)
-            if rc >= 7:
-                color = "#d62728"  # Red - high traffic
-                weight = 3
-            elif rc >= 3:
-                color = "#ff7f0e"  # Orange - medium traffic
-                weight = 2.5
-            else:
-                color = "#1f77b4"  # Blue - low traffic
-                weight = 2
-            
-            return {
-                'color': color,
-                'weight': weight,
-                'opacity': 0.7
-            }
-        
-        def highlight_function(feature):
-            return {'weight': 5, 'opacity': 1.0}
-        
         # Single GeoJson call for all segments
         folium.GeoJson(
             display,
-            style_function=style_function,
-            highlight_function=highlight_function,
-            tooltip=folium.GeoJsonTooltip(
-                fields=['ride_count', 'distance_km'],
-                aliases=['Rides:', 'Length (km):'],
-                labels=True
-            )
+            color='#805110',
+            name= 'trails',
+            weight=2,
+            opacity=0.7
         ).add_to(layer)
         
         layer.add_to(m)
-        print(f"  ✓ Trail network added ({len(display)} segments)")
-      
-    # ------------------------------------------------------------------
-    # FIXED: Rides by length - optimized
-    # ------------------------------------------------------------------
+        print(f"Trail network added ({len(display)} segments)")
+ 
     @staticmethod
-    def add_rides_by_length(m, rides):
-        """Add rides categorized by length - OPTIMIZED VERSION"""
-        simplify          = Config.RENDER_SIMPLIFY_M
-        MAX_PER_CATEGORY  = 300  # Reduced from 500
-
-        rides = rides.copy()
-        rides['length_category'] = pd.cut(
-            rides['distance_km'],
-            bins=[0, 25, 50, float('inf')],
-            labels=['Short (0-25 km)', 'Medium (25-50 km)', 'Long (50+ km)']
-        )
-        # Cast Categorical → str  (folium can't serialise Categorical)
-        rides['length_category'] = rides['length_category'].astype(str)
-
-        colors_by_length = {
-            'Short (0-25 km)':   '#9b59b6',
-            'Medium (25-50 km)': '#8e44ad',
-            'Long (50+ km)':     '#5e3370'
-        }
-
-        # Simplify once
-        rides_proj = rides.to_crs("EPSG:32633")
-        rides_proj['geometry'] = rides_proj.geometry.simplify(simplify)
-        rides = rides_proj.to_crs("EPSG:4326")
-
-        for category in rides['length_category'].unique():
-            if category == 'nan':
-                continue
-
-            subset = rides[rides['length_category'] == category].copy()
-            color  = colors_by_length.get(category, '#9b59b6')
-
-            # Subsample
-            if len(subset) > MAX_PER_CATEGORY:
-                subset = subset.sample(n=MAX_PER_CATEGORY, random_state=42)
-                print(f"   ⚡ {category}: subsampled to {MAX_PER_CATEGORY}")
-
-            # Only the columns folium needs - simplified for performance
-            export_cols = ['geometry', 'distance_km']
-            export = subset[export_cols].copy()
-
-            layer = folium.FeatureGroup(
-                name=f'{category} ({len(subset)})',
-                show=False  # Off by default to reduce initial load
-            )
-
-            # Single GeoJson for entire category
+    def trails_in_hh(m, network_proj):
+        layer = folium.FeatureGroup(name='High-High Clusters', show=True)
+        """Highlight trails that are part of High-High LISA clusters"""
+        if 'cluster_type' not in network_proj.columns:
+            print("No LISA cluster information available to highlight trails.")
+            return
+        
+        hh_trails = network_proj[network_proj['cluster_type'] == 'High-High']
+        hh_trails = hh_trails.sort_values('ride_count', ascending=False).head(10)  # Show top 10 for clarity
+        hh_trails['distance_km'] = hh_trails['distance_km'].round(0)
+        
+        if len(hh_trails) == 0:
+            print("No High-High clusters found to highlight.")
+            return
+        
+        for _, trail in hh_trails.iterrows():
             folium.GeoJson(
-                export,
-                style_function=lambda x, c=color: {
-                    'color': c, 'weight': 1.5, 'opacity': 0.6
+                trail.geometry,
+                name='High-High Clusters',
+                style_function=lambda x: {
+                    'color': "#E64E36",
+                    'weight': 4,
+                    'opacity': 0.9
                 },
-                tooltip=folium.GeoJsonTooltip(
-                    fields=['distance_km'],
-                    aliases=['Distance (km):'],
-                    labels=True
-                )
+                tooltip=f"High-High Cluster: {trail['ride_count']} rides"
             ).add_to(layer)
+        layer.add_to(m)
 
-            layer.add_to(m)
+        print(f"Highlighted {len(hh_trails)} High-High cluster trails")
+    
 
-        print("  ✓ Rides-by-length layers added")
+        

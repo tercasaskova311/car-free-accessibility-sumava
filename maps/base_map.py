@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import Config
 
-#base layer for interactive map: get the map layers, AIO, legende
+
 class BaseLayers:
     @staticmethod
     def create_base_map(center, zoom=11):
@@ -45,7 +45,6 @@ class BaseLayers:
         return m
     
     @staticmethod
-    #adding AIO - NP + CHKO Šumava - lines as a boundary 
     def add_study_area(m, study_area):
         folium.GeoJson(
             study_area,
@@ -61,38 +60,102 @@ class BaseLayers:
     
     @staticmethod
     def add_description(m, network, candidates):
-        
+        """
+        IMPROVED VERSION - Shows overall analysis results + top 3 candidates
+        """
         if candidates is None or len(candidates) == 0:
-            print("no candidates provided, skipping description panel")
+            print("No candidates provided, skipping description panel")
             return
         
-        top_candidate = candidates.iloc[0]
+        # Get top 3 candidates (or less if not available)
+        top_n = min(3, len(candidates))
+        top_candidates = candidates.head(top_n)
+        
         hottest_segment = network.nlargest(1, 'ride_count').iloc[0]
         
-        # Calculate insights from UNIQUE segments (no double-counting)
+        # Network statistics
         total_segments = len(network)
         total_trail_km = network['distance_km'].sum()
         avg_segment_traffic = network['ride_count'].mean()
         high_traffic_segments = len(network[network['ride_count'] >= Config.TRAFFIC_THRESHOLDS['medium']])
         
-        # Average segment length (diagnostic for overlaps)
-        avg_segment_length_km = total_trail_km / total_segments if total_segments > 0 else 0
-        
-        # Get spatial statistics if available
+        # Get spatial statistics
         global_moran_html = ""
         if hasattr(candidates, 'attrs') and 'global_morans_i' in candidates.attrs:
             gm = candidates.attrs['global_morans_i']
             sig_status = "Significant" if gm['significant'] else "Not Significant"
+            
+            # Interpretation
+            if gm['significant']:
+                if gm['morans_i'] > gm['expected_i']:
+                    pattern_desc = "High-traffic trails cluster together — distinct activity hotspots detected"
+                else:
+                    pattern_desc = "High and low traffic trails are dispersed"
+            else:
+                pattern_desc = "Trail usage appears randomly distributed"
+            
             global_moran_html = f"""
-                <p style="margin: 8px 0;">
-                    <b style="color: #3498db;">Global Spatial Autocorrelation:</b><br>
-                    <span style="font-size: 12px;">
-                    • Moran's I: <b>{gm['morans_i']:.4f}</b> (expected: {gm['expected_i']:.4f})<br>
-                    • Z-score: {gm['z_score']:.3f} (p={gm['p_value']:.4f}) {sig_status}<br>
-                    • {gm['interpretation']}
-                    </span>
-                </p>
-                <hr style="margin: 10px 0; border: none; border-top: 1px solid #ecf0f1;">
+                <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 3px solid #3498db; border-radius: 4px;">
+                    <p style="margin: 0 0 6px 0;">
+                        <b style="color: #2c3e50; font-size: 13px;">Global Spatial Pattern</b>
+                    </p>
+                    <div style="font-size: 11px; line-height: 1.6; color: #34495e;">
+                        <strong>Moran's I = {gm['morans_i']:.4f}</strong> 
+                        (expected: {gm['expected_i']:.4f})
+                    </div>
+                    <div style="font-size: 10px; margin-top: 4px; color: #7f8c8d;">
+                        Z-score: {gm['z_score']:.3f}, p = {gm['p_value']:.4f} 
+                        <span style="color: {'#27ae60' if gm['significant'] else '#95a5a6'};">
+                            [{sig_status}]
+                        </span>
+                    </div>
+                    <div style="font-size: 10px; margin-top: 6px; color: #7f8c8d; font-style: italic;">
+                        → {pattern_desc}
+                    </div>
+                </div>
+            """
+        
+        # Build candidate cards HTML
+        candidates_html = ""
+        colors = ['#27ae60', '#f39c12', '#e67e22']  # Green, yellow, orange for ranks 1-3
+        
+        for idx, (_, cand) in enumerate(top_candidates.iterrows()):
+            rank = int(cand['rank'])
+            score = float(cand['suitability_score'])
+            prohibited = bool(cand.get('in_prohibited_zone', False))
+            color = colors[idx] if idx < len(colors) else '#95a5a6'
+            
+            # Use unique trail length (with fallback)
+            unique_trail_km = float(cand.get('unique_trail_length_km', cand.get('trail_length_km', 0)))
+            
+            # Status icon
+            status_icon = "❌" if prohibited else "✅"
+            status_color = "#e74c3c" if prohibited else color
+            
+            candidates_html += f"""
+                <div style="margin: 8px 0; padding: 8px; background: white; border-left: 3px solid {status_color}; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <b style="color: {status_color}; font-size: 12px;">{status_icon} Rank #{rank}</b>
+                        <span style="font-size: 11px; font-weight: bold; color: {status_color};">{score:.0f}/100</span>
+                    </div>
+                    <div style="font-size: 10px; line-height: 1.5; color: #34495e;">
+                        <div style="margin: 2px 0;">
+                            📍 {cand.geometry.y:.4f}°N, {cand.geometry.x:.4f}°E
+                        </div>
+                        <div style="margin: 2px 0;">
+                            Local Moran's I: <b>{cand.get('mean_local_morans_i', 0):.3f}</b>, 
+                            Hotspots of segments: <b>{int(cand.get('hotspot_segments', 0))}</b>
+                        </div>
+                        <div style="margin: 2px 0;">
+                            Access: <b>{unique_trail_km:.1f} km</b> km of trails and mtb roads 
+                            ({int(cand['trail_count'])} segments)
+                        </div>
+                        <div style="margin: 2px 0; font-size: 9px; color: #7f8c8d;">
+                            Zone: <b>{cand.get('zone_type', 'Unknown')}</b> 
+                            {'(prohibited)' if prohibited else '(permitted)'}
+                        </div>
+                    </div>
+                </div>
             """
         
         summary_html = f"""
@@ -101,64 +164,89 @@ class BaseLayers:
             top: 120px;
             left: 60px;
             background: white;
-            padding: 15px;
+            padding: 16px 18px;
             border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
             z-index: 1000;
-            max-width: 380px;
-            font-family: Arial;
+            max-width: 420px;
+            font-family: 'Arial', sans-serif;
+            max-height: 85vh;
+            overflow-y: auto;
         ">
-            <h4 style="margin: 0 0 8px 0; color: #2c3e50; font-size: 16px;">
-                Mountain Bike Trail Network Analysis
+            <h4 style="
+                margin: 0 0 6px 0; 
+                color: #2c3e50; 
+                font-size: 16px;
+                font-weight: 600;
+                border-bottom: 2px solid #3498db;
+                padding-bottom: 6px;
+            ">
+                MTB Trail Center Analysis
             </h4>
-            <p style="margin: 0 0 12px 0; font-size: 11px; color: #7f8c8d; line-height: 1.4;">
-                Spatial autocorrelation analysis of mountain biking patterns in Šumava National Park 
-                using Local Indicators of Spatial Association (LISA) to identify statistically 
-                significant trail hotspots and optimal trail center placement.
+
+            <p style="
+                margin: 6px 0 12px 0; 
+                font-size: 11px; 
+                color: #7f8c8d; 
+                line-height: 1.5;
+            ">
+                Spatial autocorrelation analysis (LISA) to identify optimal trail center 
+                locations based on activity clustering in Šumava National Park.
             </p>
-            <hr style="margin: 10px 0; border: none; border-top: 1px solid #ecf0f1;">
-            <div style="font-size: 13px; line-height: 1.5;">
-                {global_moran_html}
-                <p style="margin: 8px 0;">
-                    <b style="color: #27ae60;">🏆 Optimal Trail Center Location:</b><br>
-                    <span style="font-size: 12px;">
-                    📍 {top_candidate.geometry.y:.4f}°N, {top_candidate.geometry.x:.4f}°E<br>
-                    • Suitability Score: <b>{top_candidate['suitability_score']:.0f}/100</b><br>
-                    • Local Moran's I: <b>{top_candidate.get('mean_local_morans_i', 0):.3f}</b><br>
-                    • Accessible Trails: {int(top_candidate['trail_count'])} unique segments 
-                    ({top_candidate['trail_length_km']:.1f} km within 5 km)<br>
-                    • Hotspot Segments: {int(top_candidate.get('hotspot_segments', 0))}
-                    </span>
+
+            {global_moran_html}
+
+            <!-- NETWORK OVERVIEW -->
+            <div style="margin: 12px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                <p style="margin: 0 0 6px 0;">
+                    <b style="color: #2c3e50; font-size: 13px;">📊 Network Overview</b>
                 </p>
-                <p style="margin: 8px 0;">
-                    <b style="color: #e74c3c;"> Most Popular Trail:</b><br>
-                    <span style="font-size: 12px;">
-                    {hottest_segment['ride_count']} recorded rides • {hottest_segment['distance_km']:.1f} km length
-                    </span>
+                <div style="font-size: 11px; line-height: 1.5; color: #34495e;">
+                    <div style="margin: 3px 0;">
+                        • Total network: <strong>{total_trail_km:.1f} km</strong> km of trails across
+                    </div>
+                    <div style="margin: 3px 0;">
+                        • High-traffic segment: <strong>{high_traffic_segments}</strong>
+                        (≥{Config.TRAFFIC_THRESHOLDS['medium']} rides)
+                    </div>
+                    <div style="margin: 3px 0;">
+                        • Peak segment: <strong>{hottest_segment['ride_count']}</strong> rides
+                    </div>
+                    <div style="margin: 3px 0;">
+                        • Mean usage: <strong>{avg_segment_traffic:.1f}</strong> rides/segment
+                    </div>
+                </div>
+            </div>
+
+            <!-- TOP CANDIDATES -->
+            <div style="margin: 12px 0;">
+                <p style="margin: 0 0 8px 0;">
+                    <b style="color: #2c3e50; font-size: 13px;">🏆 Top {top_n} Candidate Locations</b>
                 </p>
-                <p style="margin: 8px 0;">
-                    <b style="color: #3498db;"> Network Statistics:</b><br>
-                    <span style="font-size: 12px;">
-                    • Total network length: <b>{total_trail_km:.1f} km</b><br>
-                    • High-traffic trails: {high_traffic_segments} segments (≥{Config.TRAFFIC_THRESHOLDS['medium']} rides)<br>
-                    • Mean usage: {avg_segment_traffic:.1f} rides/segment
-                    </span>
-                </p>
-                <p style="margin: 8px 0;">
-                    <b style="color: {'#27ae60' if not top_candidate.get('in_prohibited_zone', False) else '#e74c3c'};">
-                        🌲 Protected Area Compliance:
-                    </b><br>
-                    <span style="font-size: 12px;">
-    {'✅ Outside Zone A (strictly protected core)<br>Development permitted with restrictions' 
-    if not top_candidate.get('in_prohibited_zone', False)
-    else '⚠️ Within Zone A (strictly protected core)<br>Development prohibited - alternative sites required'}
-                    </span>
+                {candidates_html}
+            </div>
+
+            <!-- METHODOLOGY -->
+            <div style="
+                margin-top: 12px; 
+                padding-top: 10px; 
+                border-top: 1px solid #ecf0f1; 
+            ">
+                <p style="
+                    margin: 0; 
+                    font-size: 9px; 
+                    color: #95a5a6; 
+                    line-height: 1.4;
+                    text-align: center;
+                ">
+                    <strong style="color: #7f8c8d;">Methods:</strong> 
+                    Global & Local Moran's I, distance-based spatial weights (2 km), 
+                    Monte Carlo permutation tests (p < 0.05), multi-criteria scoring.
+                    *Segments = created as part of network building, not original ride segments.
+                    Segments are equal to parts of LineStings that have been split 
+                    at intersections and simplified.
                 </p>
             </div>
-            <hr style="margin: 10px 0; border: none; border-top: 1px solid #ecf0f1;">
-            <p style="margin: 5px 0; font-size: 10px; color: #95a5a6; text-align: center;">
-                Methodology: Global and Local Moran's I spatial autocorrelation with environmental constraints
-            </p>
         </div>
         """
         

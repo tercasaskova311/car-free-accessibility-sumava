@@ -201,14 +201,19 @@ class NetworkBuilder:
         print(f"Processing {len(rides_proj)} rides")
         
         # Simplify
-        print(f"\n1. Simplifying...")
-        simplified = [g.simplify(simplify_tolerance, preserve_topology=True) 
-                      for g in tqdm(rides_proj.geometry, desc="Simplifying")]
-        
-        # Merge
-        print(f"\n2. Merging overlapping lines...")
+        from shapely.geometry import LineString, MultiLineString
+
+        # Simplify + flatten
+        simplified = []
+        for g in tqdm(rides_proj.geometry, desc="Simplifying"):
+            sg = g.simplify(simplify_tolerance, preserve_topology=True)
+            if isinstance(sg, LineString):
+                simplified.append(sg)
+            elif isinstance(sg, MultiLineString):
+                simplified.extend(list(sg.geoms))
+
         merged = linemerge(simplified)
-        
+
         if isinstance(merged, LineString):
             segments = [merged]
         elif isinstance(merged, (list, tuple)):

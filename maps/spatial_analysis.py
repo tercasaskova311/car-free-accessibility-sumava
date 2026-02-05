@@ -1,13 +1,14 @@
 import geopandas as gpd
 import numpy as np
 from shapely.geometry import Point
+from shapely.ops import unary_union
 from libpysal.weights import DistanceBand
 from esda.moran import Moran, Moran_Local
 import pandas as pd
 from pathlib import Path
 
 class SpatialAutocorrelation: 
-#Uses Moran's I to identify statistically significant clustering => Spatial autocorrelation analysis for trail network hotspots.
+    """Spatial autocorrelation analysis for trail network hotspots."""
     
     @staticmethod
     def calculate_global_morans_i(network_proj, attribute='ride_count', distance_threshold=2000):
@@ -49,9 +50,6 @@ class SpatialAutocorrelation:
         else:
             return "Significant negative autocorrelation (high/low trails are dispersed)"
 
-    # ----------------------------------------------------------------------
-    # Local Moran's I  (LISA)
-    # ----------------------------------------------------------------------
     @staticmethod
     def calculate_local_morans_i(network_proj, attribute='ride_count', distance_threshold=2000):
         """Identify local hotspots / coldspots using LISA."""
@@ -111,13 +109,9 @@ class SpatialAutocorrelation:
         return classifications
 
 
-# ======================================================================
 class LocationAnalyzer:
     """Location suitability using spatial statistics."""
 
-    # ----------------------------------------------------------------------
-    # 1.  Candidate extraction from HH hotspot clusters
-    # ----------------------------------------------------------------------
     @staticmethod
     def find_candidate_locations(network_proj, min_traffic=5):
         """Pull candidate locations from High-High hotspot clusters."""
@@ -164,31 +158,71 @@ class LocationAnalyzer:
         print(f"  identified {len(candidates)} candidate zones from {len(hotspots)} hotspot segments")
         return gpd.GeoDataFrame(candidates, crs="EPSG:32633", geometry='geometry')
 
-    # ----------------------------------------------------------------------
-    # 2.  Trail accessibility within buffer
-    # ----------------------------------------------------------------------
     @staticmethod
     def calculate_trail_access(candidates, network_proj, radius_m=5000):
-        """Count trails within radius of each candidate."""
-
-        # FIX: initialise with correct dtypes so .at[] assignment doesn't warn
-        candidates['trail_count']     = pd.array([0] * len(candidates), dtype='int64')
-        candidates['trail_length_km'] = pd.array([0.0] * len(candidates), dtype='float64')
-        candidates['total_rides']     = pd.array([0] * len(candidates), dtype='int64')
+        """
+        Count trails within radius of each candidate.
+        
+        FIXED: Calculates UNIQUE trail length by merging overlapping segments
+        to avoid double-counting.
+        """
+        print(f"\n  Calculating trail accessibility (fixing double-counting)...")
+        
+        # Initialize with correct dtypes
+        candidates['trail_count']           = pd.array([0] * len(candidates), dtype='int64')
+        candidates['trail_length_km']       = pd.array([0.0] * len(candidates), dtype='float64')
+        candidates['unique_trail_length_km'] = pd.array([0.0] * len(candidates), dtype='float64')
+        candidates['total_rides']           = pd.array([0] * len(candidates), dtype='int64')
 
         for idx, candidate in candidates.iterrows():
             buffer = candidate.geometry.buffer(radius_m)
-            nearby = network_proj[network_proj.geometry.intersects(buffer)]
+            nearby = network_proj[network_proj.geometry.intersects(buffer)].copy()
 
+            # Standard metrics (with potential overlap)
             candidates.at[idx, 'trail_count']     = int(len(nearby))
             candidates.at[idx, 'trail_length_km'] = float(nearby['distance_km'].sum())
             candidates.at[idx, 'total_rides']     = int(nearby['ride_count'].sum())
+            
+            # UNIQUE trail length (merge overlapping segments)
+            if len(nearby) > 0:
+                try:
+                    # Merge all nearby segments into a single unified geometry
+                    merged_geom = unary_union(nearby.geometry.tolist())
+                    
+                    # Calculate TRUE length
+                    if hasattr(merged_geom, 'length'):
+                        # Single LineString
+                        unique_length_m = merged_geom.length
+                    elif hasattr(merged_geom, 'geoms'):
+                        # MultiLineString - sum all parts
+                        unique_length_m = sum(geom.length for geom in merged_geom.geoms)
+                    else:
+                        # Fallback
+                        unique_length_m = nearby['distance_km'].sum() * 1000
+                    
+                    candidates.at[idx, 'unique_trail_length_km'] = float(unique_length_m / 1000)
+                    
+                    # Report overlap factor for diagnostics
+                    overlap_factor = nearby['distance_km'].sum() / (unique_length_m / 1000)
+                    if overlap_factor > 1.5:
+                        print(f"    Candidate {idx}: overlap factor = {overlap_factor:.2f}x "
+                              f"({nearby['distance_km'].sum():.1f} km → {unique_length_m/1000:.1f} km unique)")
+                
+                except Exception as e:
+                    print(f"    Warning: Could not calculate unique length for candidate {idx}: {e}")
+                    # Fallback to standard length
+                    candidates.at[idx, 'unique_trail_length_km'] = float(nearby['distance_km'].sum())
+            else:
+                candidates.at[idx, 'unique_trail_length_km'] = 0.0
 
+        # Summary statistics
+        print(f"\n  Trail accessibility calculated:")
+        print(f"    Unique trail length (merged):        {candidates['unique_trail_length_km'].sum():.1f} km")
+        avg_overlap = candidates['trail_length_km'].sum() / candidates['unique_trail_length_km'].sum() if candidates['unique_trail_length_km'].sum() > 0 else 1.0
+        print(f"    Average overlap factor:              {avg_overlap:.2f}x")
+        
         return candidates
 
-    # ----------------------------------------------------------------------
-    # 3.  Environmental constraints
-    # ----------------------------------------------------------------------
     @staticmethod
     def check_environmental_constraints(candidates, zones_proj):
         """Check whether candidates fall inside prohibited zones."""
@@ -205,24 +239,21 @@ class LocationAnalyzer:
 
         return candidates
 
-    # ----------------------------------------------------------------------
-    # 4.  Composite scoring
-    # ----------------------------------------------------------------------
     @staticmethod
     def calculate_composite_scores(candidates):
         """
         Final suitability score (0-100):
-            Trail accessibility          30 %
+            Trail accessibility          30 %  (using UNIQUE length)
             Usage intensity              30 %
             Clustering strength (LISA)   40 %
             Zone A  →  disqualified (score = 0)
         """
         df = candidates.copy()
 
-        df['accessibility_score'] = df['trail_count'].rank(ascending=True, method='dense') / len(df) * 100
+        # Use UNIQUE trail length for accessibility score (no double-counting)
+        df['accessibility_score'] = df['unique_trail_length_km'].rank(ascending=True, method='dense') / len(df) * 100
         df['usage_score']         = df['total_rides'].rank(ascending=True, method='dense') / len(df) * 100
         df['clustering_score']    = df['mean_local_morans_i'].rank(ascending=True, method='dense') / len(df) * 100
-
 
         df['suitability_score'] = (
             df['accessibility_score'] * 0.30 +
@@ -237,9 +268,6 @@ class LocationAnalyzer:
 
         return df.sort_values('suitability_score', ascending=False)
 
-    # ----------------------------------------------------------------------
-    # 5.  Full pipeline
-    # ----------------------------------------------------------------------
     @staticmethod
     def analyze(network, rides, study_area, protected_zones=None):
         """
@@ -247,7 +275,7 @@ class LocationAnalyzer:
             1. Global Moran's I
             2. Local Moran's I  → LISA quadrants
             3. Extract candidates from HH clusters
-            4. Accessibility metrics
+            4. Accessibility metrics (FIXED: unique trail length)
             5. Environmental constraints
             6. Composite scores
         """
@@ -268,7 +296,7 @@ class LocationAnalyzer:
             print("⚠️  No suitable candidates found")
             return None
 
-        # 4
+        # 4 - FIXED: Now calculates unique trail length
         candidates = LocationAnalyzer.calculate_trail_access(candidates, network_proj, radius_m=5000)
         # 5
         candidates = LocationAnalyzer.check_environmental_constraints(candidates, zones_proj)
@@ -280,9 +308,6 @@ class LocationAnalyzer:
 
         return results.to_crs(network.crs)
 
-    # ----------------------------------------------------------------------
-    # 6.  Persist
-    # ----------------------------------------------------------------------
     @staticmethod
     def save_results(results, output_path):
         output_path = Path(output_path)
@@ -290,7 +315,8 @@ class LocationAnalyzer:
 
         export_cols = [
             'rank', 'suitability_score', 'geometry',
-            'trail_count', 'trail_length_km', 'total_rides',
+            'trail_count', 'trail_length_km', 'unique_trail_length_km',  # Added unique
+            'total_rides',
             'mean_local_morans_i', 'clustering_strength',
             'in_prohibited_zone', 'zone_type',
             'hotspot_segments'
@@ -305,7 +331,10 @@ class LocationAnalyzer:
                   f"({row.geometry.y:.4f}°N, {row.geometry.x:.4f}°E)")
             print(f"     Suitability Score:          {row['suitability_score']:.1f}/100")
             print(f"     Clustering Strength (I):    {row['mean_local_morans_i']:.3f}")
-            print(f"     Trail Access:               {int(row['trail_count'])} segments, "
-                  f"{row['trail_length_km']:.1f} km")
+            print(f"     Trail Access:               {int(row['trail_count'])} segments")
+            print(f"     Trail Length (raw):         {row['trail_length_km']:.1f} km")
+            print(f"     Trail Length (unique):      {row['unique_trail_length_km']:.1f} km")
+            overlap = row['trail_length_km'] / row['unique_trail_length_km'] if row['unique_trail_length_km'] > 0 else 1
+            print(f"     Overlap factor:             {overlap:.2f}x")
             print(f"     Zone: {row['zone_type']}  "
                   f"{'❌ PROHIBITED' if row['in_prohibited_zone'] else '✓ PERMITTED'}")
