@@ -1,7 +1,6 @@
 from pathlib import Path
 
 class Config:
-
     DATA_DIR = Path('data')
     STRAVA_DIR = DATA_DIR / 'strava'
     SUMAVA_DIR = DATA_DIR / 'sumava_data'
@@ -19,32 +18,21 @@ class Config:
     MIN_ZOOM = 8
     MAX_ZOOM = 18
     
-    # ============================================================
-    # ULTRA-MINIMAL SETTINGS FOR 548 RIDES
-    # ============================================================
+    SNAP_TOLERANCE = 100           # Cluster distance (4x buffer for similar routes)
+    MIN_SEGMENT_LENGTH = 300       # Filter segments shorter than 300m
+    SIMPLIFY_TOLERANCE = 15        # Simplify geometry by 15m tolerance
+    INTERSECTION_BUFFER = 100      # Ride-to-segment mapping tolerance
+    BASE_TRAIL_SAMPLE_SIZE = 300        # Show top 300 segments (traffic-weighted)
+    RENDER_SIMPLIFY_M = 25              # Simplify coordinates for HTML
+    TRAIL_RENDER_STRATEGY = 'traffic_weighted'  # Prioritize busy trails
+    HEATMAP_POINTS_PER_ROUTE = 15       # 15 points per route
+    HEATMAP_RADIUS = 12                 # Heatmap radius
+    HEATMAP_BLUR = 15                   # Blur amount
+    MAX_HEAT_POINTS = 5000              # Cap total points at 5000
+
+    MAX_RIDES_PER_LENGTH_CATEGORY = 100   # 100 per category (short/medium/long)
+    MAX_TOTAL_RIDES_RENDER = 300          # Total 300 rides in HTML
     
-    # Network building - create FEWER, LONGER segments
-    SNAP_TOLERANCE = 50          # ← VERY LARGE (was 25)
-    MIN_SEGMENT_LENGTH = 500     # ← VERY LARGE (was 200)
-    SIMPLIFY_TOLERANCE = 10      # ← More aggressive
-    INTERSECTION_BUFFER = 30     # ← VERY SMALL (was 50)
-    
-    # Rendering - show MINIMAL data in HTML
-    BASE_TRAIL_SAMPLE_SIZE = 100      # ← Only 100 segments (was 300)
-    RENDER_SIMPLIFY_M = 30            # ← Very aggressive (was 20)
-    TRAIL_RENDER_STRATEGY = 'top_traffic'  # Show only busiest trails
-    
-    # Heatmap - MINIMAL
-    HEATMAP_POINTS_PER_ROUTE = 10     # ← Reduced from 20
-    HEATMAP_RADIUS = 12
-    HEATMAP_BLUR = 15
-    MAX_HEAT_POINTS = 3000            # ← Reduced from 8000
-    
-    # Rides by length - MINIMAL
-    MAX_RIDES_PER_LENGTH_CATEGORY = 50   # ← Only 50 per category
-    MAX_TOTAL_RIDES_RENDER = 150         # ← Total 150 rides shown
-    
-    # Colors
     COLORS = {
         'no_traffic': "#1f77b4",
         'low_traffic': "#ff7f0e",
@@ -59,14 +47,15 @@ class Config:
     }
     
     TRAFFIC_THRESHOLDS = {
-        'low': 2,      # ← Lower thresholds for small dataset
-        'medium': 5
+        'low': 5,       # 5+ rides = low traffic
+        'medium': 10    # 10+ rides = medium traffic
     }
     
+    # Legacy settings (not used with optimized approach)
     CLUSTER_DISTANCE = 2000
     SIMPLIFY_GEOMETRIES = True
     SAMPLE_HEATMAP = True
-    HEATMAP_SAMPLE_SIZE = 0.3  # Use only 30% for heatmap
+    HEATMAP_SAMPLE_SIZE = 0.3
     
     @classmethod
     def ensure_directories(cls):
@@ -75,15 +64,17 @@ class Config:
     
     @classmethod
     def print_settings(cls):
-        print("\n" + "="*70)
-        print("ULTRA-MINIMAL CONFIG (548 rides)")
-        print("="*70)
+        print("OPTIMIZED CONFIG FOR 3,000 RIDES")
         print("\nNETWORK BUILDING:")
-        print(f"  SNAP_TOLERANCE:     {cls.SNAP_TOLERANCE}m (creates ~50-150 segments)")
-        print(f"  MIN_SEGMENT_LENGTH: {cls.MIN_SEGMENT_LENGTH}m (filters tiny segments)")
+        print(f"  SNAP_TOLERANCE:       {cls.SNAP_TOLERANCE}m (clustering distance)")
+        print(f"  MIN_SEGMENT_LENGTH:   {cls.MIN_SEGMENT_LENGTH}m (minimum segment)")
+        print(f"  SIMPLIFY_TOLERANCE:   {cls.SIMPLIFY_TOLERANCE}m (geometry simplification)")
+        print(f"  INTERSECTION_BUFFER:  {cls.INTERSECTION_BUFFER}m (mapping tolerance)")
+        print(f"\n  Expected output:      400-700 segments")
+        print(f"  Expected time:        30-60 seconds")
+        
         print("\nHTML RENDERING:")
-        print(f"  Segments shown:     {cls.BASE_TRAIL_SAMPLE_SIZE}")
-        print(f"  Rides shown:        {cls.MAX_TOTAL_RIDES_RENDER}")
-        print(f"  Heatmap points:     {cls.MAX_HEAT_POINTS}")
-        print(f"  Expected HTML:      ~5-10 MB")
-        print("="*70 + "\n")
+        print(f"  Segments shown:       {cls.BASE_TRAIL_SAMPLE_SIZE} (traffic-weighted sample)")
+        print(f"  Rides shown:          {cls.MAX_TOTAL_RIDES_RENDER} (balanced categories)")
+        print(f"  Heatmap points:       {cls.MAX_HEAT_POINTS}")
+        print(f"  Simplification:       {cls.RENDER_SIMPLIFY_M}m")

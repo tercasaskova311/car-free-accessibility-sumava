@@ -1,3 +1,4 @@
+#Spatial autocorrelation analysis for trail network hotspots + location suitability
 import geopandas as gpd
 import numpy as np
 from shapely.geometry import Point
@@ -6,20 +7,24 @@ from libpysal.weights import DistanceBand
 from esda.moran import Moran, Moran_Local
 import pandas as pd
 from pathlib import Path
+from sklearn.cluster import DBSCAN
 
 class SpatialAutocorrelation: 
-    """Spatial autocorrelation analysis for trail network hotspots."""
     
     @staticmethod
     def calculate_global_morans_i(network_proj, attribute='ride_count', distance_threshold=2000):
-        """Test for global spatial autocorrelation in trail usage."""
+        #spatial autocorrelation in trail usage = test whether high-traffic trails cluster together
 
-        centroids = network_proj.geometry.centroid
+        #projected trail network => number of rides per segment
+        centroids = network_proj.geometry.centroid 
+
+        #array of x and y coords =>calculate distances between them
         coords = np.column_stack([centroids.x, centroids.y])
 
         w = DistanceBand.from_array(coords, threshold=distance_threshold, binary=True)
-        w.transform = 'r'  # Row-standardized
-
+        
+        # compare segments with different numbers of neighbors
+        w.transform = 'r'  
         y = network_proj[attribute].values
         moran = Moran(y, w)
 
@@ -52,11 +57,15 @@ class SpatialAutocorrelation:
 
     @staticmethod
     def calculate_local_morans_i(network_proj, attribute='ride_count', distance_threshold=2000):
-        """Identify local hotspots / coldspots using LISA."""
 
+        #project trails to crs (m)
         centroids = network_proj.geometry.centroid
+        #stack xy within array
         coords = np.column_stack([centroids.x, centroids.y])
 
+        #create weight matrix: neighbors within threshold distance
+        #this is crucial for trails with varying number of neighbors
+        #the goal is to compare segments with different numbers of neighbors
         w = DistanceBand.from_array(coords, threshold=distance_threshold, binary=True)
         w.transform = 'r'
 
@@ -110,11 +119,9 @@ class SpatialAutocorrelation:
 
 
 class LocationAnalyzer:
-    """Location suitability using spatial statistics."""
 
     @staticmethod
     def find_candidate_locations(network_proj, min_traffic=5):
-        """Pull candidate locations from High-High hotspot clusters."""
 
         hotspots = network_proj[
             (network_proj['cluster_type'] == 'High-High') &
@@ -126,21 +133,23 @@ class LocationAnalyzer:
             print("No significant hotspots found")
             return None
 
-        from sklearn.cluster import DBSCAN
         centroids = hotspots.geometry.centroid
         coords = np.column_stack([centroids.x, centroids.y])
 
+        #group segments together (within 2km)
         db = DBSCAN(eps=2000, min_samples=2).fit(coords)
         hotspots['spatial_group'] = db.labels_
 
         candidates = []
         for group_id in set(db.labels_):
-            if group_id == -1:
+            if group_id == -1: #ignore noise
                 continue
 
             group_segs = hotspots[hotspots['spatial_group'] == group_id]
 
             weights = group_segs['local_i'].values
+
+            #avg = central point (cluster)
             center = np.average(
                 np.column_stack([group_segs.geometry.centroid.x,
                                  group_segs.geometry.centroid.y]),
@@ -155,20 +164,13 @@ class LocationAnalyzer:
                 'clustering_strength':   float(group_segs['local_i'].sum()),
             })
 
-        print(f"  identified {len(candidates)} candidate zones from {len(hotspots)} hotspot segments")
+        print(f"identified {len(candidates)} candidate zones from {len(hotspots)} hotspot segments")
         return gpd.GeoDataFrame(candidates, crs="EPSG:32633", geometry='geometry')
 
     @staticmethod
     def calculate_trail_access(candidates, network_proj, radius_m=5000):
-        """
-        Count trails within radius of each candidate.
-        
-        FIXED: Calculates UNIQUE trail length by merging overlapping segments
-        to avoid double-counting.
-        """
-        print(f"\n  Calculating trail accessibility (fixing double-counting)...")
-        
-        # Initialize with correct dtypes
+        #Count trails within radius of each candidate.
+            
         candidates['trail_count']           = pd.array([0] * len(candidates), dtype='int64')
         candidates['trail_length_km']       = pd.array([0.0] * len(candidates), dtype='float64')
         candidates['unique_trail_length_km'] = pd.array([0.0] * len(candidates), dtype='float64')
@@ -184,53 +186,51 @@ class LocationAnalyzer:
             candidates.at[idx, 'total_rides']     = int(nearby['ride_count'].sum())
             
             # UNIQUE trail length (merge overlapping segments)
+            #trail is made of multiple segments that can overlap within the buffer
+            #originally we have rides => segments 
+            #in order to actually count accessibility - we need to merge overlapping segments - so we get unique length
+
             if len(nearby) > 0:
                 try:
-                    # Merge all nearby segments into a single unified geometry
                     merged_geom = unary_union(nearby.geometry.tolist())
                     
-                    # Calculate TRUE length
                     if hasattr(merged_geom, 'length'):
-                        # Single LineString
-                        unique_length_m = merged_geom.length
+                        unique_length_m = merged_geom.length #single linestring
                     elif hasattr(merged_geom, 'geoms'):
-                        # MultiLineString - sum all parts
-                        unique_length_m = sum(geom.length for geom in merged_geom.geoms)
+                        unique_length_m = sum(geom.length for geom in merged_geom.geoms) # MultiLineString - sum all parts
                     else:
-                        # Fallback
-                        unique_length_m = nearby['distance_km'].sum() * 1000
+                        unique_length_m = nearby['distance_km'].sum() * 1000 #fallback
                     
                     candidates.at[idx, 'unique_trail_length_km'] = float(unique_length_m / 1000)
                     
-                    # Report overlap factor for diagnostics
+                    # Report overlap factor for diagnostics 
                     overlap_factor = nearby['distance_km'].sum() / (unique_length_m / 1000)
                     if overlap_factor > 1.5:
                         print(f"    Candidate {idx}: overlap factor = {overlap_factor:.2f}x "
                               f"({nearby['distance_km'].sum():.1f} km → {unique_length_m/1000:.1f} km unique)")
                 
                 except Exception as e:
-                    print(f"    Warning: Could not calculate unique length for candidate {idx}: {e}")
-                    # Fallback to standard length
+                    print(f"Could not calculate unique length for candidate {idx}: {e}")
                     candidates.at[idx, 'unique_trail_length_km'] = float(nearby['distance_km'].sum())
             else:
                 candidates.at[idx, 'unique_trail_length_km'] = 0.0
 
         # Summary statistics
-        print(f"\n  Trail accessibility calculated:")
-        print(f"    Unique trail length (merged):        {candidates['unique_trail_length_km'].sum():.1f} km")
+        print(f"Trail accessibility calculated:")
+        print(f"Unique trail length (merged):{candidates['unique_trail_length_km'].sum():.1f} km")
         avg_overlap = candidates['trail_length_km'].sum() / candidates['unique_trail_length_km'].sum() if candidates['unique_trail_length_km'].sum() > 0 else 1.0
-        print(f"    Average overlap factor:              {avg_overlap:.2f}x")
+        print(f"Average overlap factor:{avg_overlap:.2f}x")
         
         return candidates
 
     @staticmethod
     def check_environmental_constraints(candidates, zones_proj):
-        """Check whether candidates fall inside prohibited zones."""
         if zones_proj is None:
             candidates['in_prohibited_zone'] = False
             candidates['zone_type'] = 'Unknown'
             return candidates
 
+        #spatial join - check if candidates fall within protected zones
         joined = gpd.sjoin(candidates, zones_proj[['ZONA', 'geometry']],
                            how='left', predicate='within')
 
@@ -241,16 +241,12 @@ class LocationAnalyzer:
 
     @staticmethod
     def calculate_composite_scores(candidates):
-        """
-        Final suitability score (0-100):
-            Trail accessibility          30 %  (using UNIQUE length)
-            Usage intensity              30 %
-            Clustering strength (LISA)   40 %
-            Zone A  →  disqualified (score = 0)
-        """
+        #score: accesibility + usage + clustering - penalties for protected zones
+
+        #copy - because we want to keep original 
         df = candidates.copy()
 
-        # Use UNIQUE trail length for accessibility score (no double-counting)
+        #normalize metrics to 0-100 - this approach is better than min-max scaling
         df['accessibility_score'] = df['unique_trail_length_km'].rank(ascending=True, method='dense') / len(df) * 100
         df['usage_score']         = df['total_rides'].rank(ascending=True, method='dense') / len(df) * 100
         df['clustering_score']    = df['mean_local_morans_i'].rank(ascending=True, method='dense') / len(df) * 100
@@ -270,40 +266,32 @@ class LocationAnalyzer:
 
     @staticmethod
     def analyze(network, rides, study_area, protected_zones=None):
-        """
-        Pipeline:
-            1. Global Moran's I
-            2. Local Moran's I  → LISA quadrants
-            3. Extract candidates from HH clusters
-            4. Accessibility metrics (FIXED: unique trail length)
-            5. Environmental constraints
-            6. Composite scores
-        """
+        #moran's I + candidate locations + scoring
+
+        #trails + zones to crs(m)
         network_proj = network.to_crs("EPSG:32633")
         zones_proj   = protected_zones.to_crs("EPSG:32633") if protected_zones is not None else None
 
-        # 1
         global_moran = SpatialAutocorrelation.calculate_global_morans_i(
             network_proj, attribute='ride_count', distance_threshold=2000
         )
-        # 2
+
         network_with_lisa = SpatialAutocorrelation.calculate_local_morans_i(
             network_proj, attribute='ride_count', distance_threshold=2000
         )
-        # 3
+    
         candidates = LocationAnalyzer.find_candidate_locations(network_with_lisa, min_traffic=5)
         if candidates is None:
-            print("⚠️  No suitable candidates found")
+            print("No suitable candidates found")
             return None
 
-        # 4 - FIXED: Now calculates unique trail length
         candidates = LocationAnalyzer.calculate_trail_access(candidates, network_proj, radius_m=5000)
-        # 5
+    
         candidates = LocationAnalyzer.check_environmental_constraints(candidates, zones_proj)
-        # 6
+        
         results = LocationAnalyzer.calculate_composite_scores(candidates)
 
-        # Attach global stats for the info panel
+        #attrs - we keep all info together
         results.attrs['global_morans_i'] = global_moran
 
         return results.to_crs(network.crs)
@@ -323,9 +311,9 @@ class LocationAnalyzer:
         ]
 
         results[export_cols].to_file(output_path, driver='GPKG')
-        print(f"✓ Results saved to {output_path}")
+        print(f"Results saved to {output_path}")
 
-        print("\ncandidates")
+        print("candidates")
         for _, row in results.head(5).iterrows():
             print(f"\n  {int(row['rank'])}. Location "
                   f"({row.geometry.y:.4f}°N, {row.geometry.x:.4f}°E)")

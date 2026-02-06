@@ -5,7 +5,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import Config
 
-
 class BaseLayers:
     @staticmethod
     def create_base_map(center, zoom=11):
@@ -60,17 +59,11 @@ class BaseLayers:
     
     @staticmethod
     def add_description(m, network, candidates):
-        """
-        IMPROVED VERSION - Shows overall analysis results + top 3 candidates
-        """
-        if candidates is None or len(candidates) == 0:
-            print("No candidates provided, skipping description panel")
-            return
-        
+        #Shows overall analysis results + top 3 candidates
+
         # Get top 3 candidates (or less if not available)
         top_n = min(3, len(candidates))
         top_candidates = candidates.head(top_n)
-        
         hottest_segment = network.nlargest(1, 'ride_count').iloc[0]
         
         # Network statistics

@@ -34,6 +34,6 @@ class DataLoader:
         rides_proj = rides.to_crs("EPSG:32633")
         rides["distance_km"] = rides_proj.geometry.length / 1000
 
-        print("   ✓ Calculated ride distances in km")
+        print("Calculated ride distances in km")
         return rides
 

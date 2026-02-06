@@ -4,13 +4,14 @@ from base_map import BaseLayers
 from trails_layer import TrailsLayers
 from heatmap import HeatMapLayer
 from spatial_analysis import LocationAnalyzer, SpatialAutocorrelation
-from render_optimizer import RenderOptimizer  # ← NEW
 import sys
 from pathlib import Path
 import folium
 import geopandas as gpd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import Config
+from network_layer import OptimizedNetworkBuilder
+
 
 
 def stats(study_area, rides, network, candidates=None):
@@ -113,17 +114,10 @@ def main():
         )
     else:
         print("\n Building trail network from scratch...")
-        network = NetworkBuilder.create_network_sequential(
-            rides,
-            tolerance=Config.SIMPLIFY_TOLERANCE,
-            snap_tolerance=Config.SNAP_TOLERANCE
-        )
-        network = NetworkBuilder.map_rides_to_segments(
-            network,
-            rides,
-            buffer_distance=Config.INTERSECTION_BUFFER
-        )
+        network = OptimizedNetworkBuilder.create_network_auto(rides)
+        network = OptimizedNetworkBuilder.map_rides_to_segments_vectorized(network, rides, buffer_distance=Config.INTERSECTION_BUFFER)
         NetworkBuilder.save_network(network, Config.TRAIL_NETWORK)
+    
 
     # === STEP 4: SPATIAL AUTOCORRELATION ANALYSIS ===
     protected_zones_file = Path('data/sumava_zones_2.geojson')

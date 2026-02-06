@@ -1,3 +1,5 @@
+#add zones with legend and candidate locations
+
 import folium
 from folium.plugins import MarkerCluster
 import geopandas as gpd
@@ -13,17 +15,17 @@ from config import Config
 class TrailsLayers:
     @staticmethod
     def add_protected_zones(m, zones_gdf):
-        """Add protected zones with legend, no popups"""
+        #Add protected zones with legend for both national park and protected landscape area
         zone_colors = {
             'A': '#1a5c1a', 'B': '#2d8a2d', 'C': '#4caf50', 'D': '#81c784',
             'I': '#66bb6a', 'II': '#81c784', 'III': '#a5d6a7', 'IV': '#c8e6c9'
         }
         
         zone_labels = {
-            'A': 'Zone A - Strictly Protected Core',
-            'B': 'Zone B - Managed Protection',
-            'C': 'Zone C - Outer Protection',
-            'D': 'Zone D - Buffer Zone',
+            'A': 'Zone A (NP) - Strictly Protected Core',
+            'B': 'Zone B (NP) - Managed Protection',
+            'C': 'Zone C (NP) - Outer Protection',
+            'D': 'Zone D (NP) - Buffer Zone',
             'I': 'Zone I - CHKO protected area',
             'II': 'Zone II - CHKO protected area',
             'III': 'Zone III - CHKO protected area',
@@ -45,7 +47,7 @@ class TrailsLayers:
                     'fillOpacity': 0.25,
                     'opacity': 0.5
                 },
-                tooltip=f"Zone {zone_type}"  # Simple hover tooltip
+                tooltip=f"Zone {zone_type}"  # Simple hover tooltip to show zone type on map
             ).add_to(layer)
         
         layer.add_to(m)
@@ -104,6 +106,8 @@ class TrailsLayers:
 
     @staticmethod
     def add_candidate_locations(m, candidates, protected_zones=None):
+        #choose top 3 candidates (based on suitability score/spatial_analysis) and add to map
+
         layer = folium.FeatureGroup(name='Candidate Locations', show=True)
         if candidates is None or len(candidates) == 0:
             return
@@ -126,7 +130,8 @@ class TrailsLayers:
             else:
                 color = 'pink'
                 radius = 9
-
+            
+            #simple pop up for the map
             popup_html = f"""
             <b>Candidate #{rank}</b><br>
             Score: {score:.1f}/100<br>
@@ -135,6 +140,7 @@ class TrailsLayers:
             Zone: {row['zone_type']}
             """
 
+            #marker for each candidate place
             folium.CircleMarker(
                 location=[row.geometry.y, row.geometry.x],
                 radius=radius,
@@ -148,10 +154,14 @@ class TrailsLayers:
 
     @staticmethod
     def add_trail_net(m, network):
+        # Add base trail network layer (subsampled and simplified for performance)
+        #subsampled: 500 segments - means only 500 segments shown in the map
+        #simplify 10m - means only every 10th meter is kept in geometry
 
         sample_size = Config.BASE_TRAIL_SAMPLE_SIZE   # 500
         simplify    = Config.RENDER_SIMPLIFY_M        # 10 m
         display = network.copy()
+
         # Simplify geometry
         display_proj = display.to_crs("EPSG:32633")
         display_proj['geometry'] = display_proj.geometry.simplify(simplify)
@@ -160,10 +170,10 @@ class TrailsLayers:
         # Subsample if needed
         if len(display) > sample_size:
             display = display.sample(n=sample_size, random_state=42)
-            print(f"   ⚡ Base trail layer subsampled: {len(network)} → {sample_size}")
+            print(f"Base trail layer subsampled: {len(network)} → {sample_size}")
 
         layer = folium.FeatureGroup(name='Trail Network', show=True)
-        # Single GeoJson call for all segments
+        # Single GeoJson call for all segments! Improves performance.
         folium.GeoJson(
             display,
             color='#805110',
@@ -177,11 +187,9 @@ class TrailsLayers:
  
     @staticmethod
     def trails_in_hh(m, network_proj):
-        layer = folium.FeatureGroup(name='High-High Clusters', show=True)
-        """Highlight trails that are part of High-High LISA clusters"""
-        if 'cluster_type' not in network_proj.columns:
-            print("No LISA cluster information available to highlight trails.")
-            return
+        #Highlight trails that are part of High-High LISA clusters
+
+        layer = folium.FeatureGroup(name='High-High Clusters', show=True)        
         
         hh_trails = network_proj[network_proj['cluster_type'] == 'High-High']
         hh_trails = hh_trails.sort_values('ride_count', ascending=False).head(10)  # Show top 10 for clarity

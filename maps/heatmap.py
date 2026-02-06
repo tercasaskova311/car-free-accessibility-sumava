@@ -16,12 +16,12 @@ class HeatMapLayer:
         MAX_HEAT_POINTS = 15_000
         points_per_route = Config.HEATMAP_POINTS_PER_ROUTE  # 30
 
-        # How many rides do we need to stay under the cap?
+        # How many rides do we need to stay under the cap? - max 5000 points
         max_rides = max(1, MAX_HEAT_POINTS // points_per_route)
 
         if len(rides) > max_rides:
             rides_sample = rides.sample(n=max_rides, random_state=42)
-            print(f"   ⚡ Heatmap subsampled: {len(rides)} → {max_rides} rides")
+            print(f"Heatmap subsampled: {len(rides)} → {max_rides} rides")
         else:
             rides_sample = rides
 
@@ -47,6 +47,6 @@ class HeatMapLayer:
                 gradient={0.0: 'white', 0.5: 'lime', 0.7: 'yellow', 1.0: 'red'}
             ).add_to(layer)
             layer.add_to(m)
-            print(f"  ✓ Heatmap layer added ({len(heat_data)} points)")
+            print(f" Heatmap layer added ({len(heat_data)} points)")
 
      
