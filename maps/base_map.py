@@ -68,7 +68,7 @@ class BaseLayers:
         
         # Network statistics
         total_segments = len(network)
-        total_trail_km = network['distance_km'].sum()
+        total_trail_km = network['distance_km'].groupby(network['segment_id']).first().sum() / 1000  # Sum unique segments
         avg_segment_traffic = network['ride_count'].mean()
         high_traffic_segments = len(network[network['ride_count'] >= Config.TRAFFIC_THRESHOLDS['medium']])
         
