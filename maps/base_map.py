@@ -1,3 +1,4 @@
+#create base layer with folium, add study area boundary and description/info panel with overall stats and top candidates summary
 import folium
 from folium.plugins import MarkerCluster, HeatMap, Fullscreen, MiniMap
 import sys
@@ -61,7 +62,6 @@ class BaseLayers:
     def add_description(m, network, candidates):
         #Shows overall analysis results + top 3 candidates
 
-        # Get top 3 candidates (or less if not available)
         top_n = min(3, len(candidates))
         top_candidates = candidates.head(top_n)
         hottest_segment = network.nlargest(1, 'ride_count').iloc[0]
@@ -78,7 +78,6 @@ class BaseLayers:
             gm = candidates.attrs['global_morans_i']
             sig_status = "Significant" if gm['significant'] else "Not Significant"
             
-            # Interpretation
             if gm['significant']:
                 if gm['morans_i'] > gm['expected_i']:
                     pattern_desc = "High-traffic trails cluster together — distinct activity hotspots detected"
@@ -87,6 +86,7 @@ class BaseLayers:
             else:
                 pattern_desc = "Trail usage appears randomly distributed"
             
+            # Build HTML for global Moran's I summary
             global_moran_html = f"""
                 <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 3px solid #3498db; border-radius: 4px;">
                     <p style="margin: 0 0 6px 0;">
@@ -108,7 +108,7 @@ class BaseLayers:
                 </div>
             """
         
-        # Build candidate cards HTML
+        # Build candidate cards HTML - showing rank, score, coordinates, local Moran's I, trail access, and zone status
         candidates_html = ""
         colors = ['#27ae60', '#f39c12', '#e67e22']  # Green, yellow, orange for ranks 1-3
         

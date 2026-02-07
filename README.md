@@ -1,152 +1,62 @@
-# MTB Trail Center Planner for Šumava National Park
-**Geospatial Analysis of Mountain Bike Routes Using Personal Strava Data**
+# 🚵 MTB Trail Center Planner for Šumava National Park
+
+Find the best location for a mountain bike trail center using GPS data and spatial analysis.
+
+## 📍 What This Does
+
+This project analyzes 7 years of mountain biking GPS data (3,045 rides) to find the optimal location for a trail center in Šumava National Park, Czech Republic.
+
+**[🗺️ View Interactive Map](https://tercasaskova311.github.io/mtb-ride-planner/maps/mtb_planner.html)**
+
+## Results
+
+- **Best Location**: 49.09°N, 13.61°E (Score: 80/100)
+- **Zone**: II (development permitted)
+
+## How It Works
+
+1. **Collects GPS rides** from personal activities
+2. **Builds trail network** by merging overlapping rides
+3. **Finds hotspots** using spatial statistics (Moran's I)
+4. **Ranks locations** based on trail access and usage
+5. **Checks regulations** (avoids protected zones)
 
 
-Using personal GPS tracking data from Garmin device (2017-2024), this analysis:
-- Identifies high-traffic trail networks through spatial analysis (Moran's I)
-- Evaluates candidate trail center locations based on accessibility metrics
-- Performs environmental constraint analysis using protected zone classifications
-- Generates an interactive map with multiple analytical layers
+## Sections
 
-**[View Live Interactive Map](....)
+- **Interactive map** with trail network, heatmaps, and candidate locations
+- **Spatial analysis** identifying high-traffic areas
+- **Environmental compliance** checking protected zones
 
----
-
-## Study Area
-
-**Šumava National Park (Národní park Šumava) and Protected Landscape Area (CHKO Šumava)**
-- Location: Czech Republic-Germany border
-- Total area: ~1,630 km² (NP + CHKO)
-
----
-
-## Quick Start
-
-### Prerequisites
-- (Optional) Strava account for downloading custom data
-
-### Installation
-
-```bash
-# Clone repository
-git clone https://github.com/tercasaskova311/mtb-ride-planner
-cd mtb-ride-planner
-pip install -r requirements.txt
-
-#Download Your Own Strava Data
-#Requirements = Active Strava account with GPS activities
-
-#1.Get Strava API Credentials:**
-   - Go to https://www.strava.com/settings/api
-   - Create a new application
-   - Note your `Client ID` and `Client Secret`
-
-#2.Set Environment Variables:
-   export STRAVA_CLIENT_ID="your_client_id"
-   export STRAVA_CLIENT_SECRET="your_client_secret"
-   export CODE="your_authorization_code"
-
-#3.Download Data:   
-   python preprocessing/strava_data.py
-
-#4.Run Analysis
-   python maps/main.py
-```
-
-## STEPS ##
-1. Load and clean ride data
-2. Build unified trail network from overlapping GPS tracks
-3. Map rides to network segments
-4. Perform Moran's I global and local spacial analysis
-5. Calculate suitability scores for candidate locations
-6. Check environmental constraints (protected zones)
-7. Generate interactive map with all layers
-
----
-
-## Interactive Map Features
-
-Open (...)
-
-### Base Layers
--  **OpenStreetMap** - Default street map
--  **Satellite Imagery** - Esri World Imagery
--  **Topographic Map** - OpenTopoMap with contours
-
-### Analysis Layers
-| Layer | Description | Visibility |
-|-------|-------------|------------|
-| **Study Area Boundary** | Red dashed outline of NP + CHKO | Always on |
-| **Protected Zones** | Green gradient (darker = stricter) | On by default |
-| **Trail Network** | .....|
-| **Candidate Location** | 1 choosen location marked by circle | On by default |
-| **Density Heatmap** | Red-yellow GPS point concentration | Off by default |
-| **Rides by Length** | Short/Medium/Long categories | Off by default |
-
----
-
-## Project Structure
+## Structure
 
 ```
 mtb-ride-planner/
-│
-├── data/
-│   ├── strava/                    # Strava GPS data
-│   │   ├── strava_routes_sumava.geojson
-│   │   ├── trail_network.gpkg
-│   │   └── rides_cleaned.gpkg
-│   │
-│   ├── sumava_data/               # Protected area boundaries
-│   │   └── sumava_aoi.gpkg        # Combined AOI
-│   │
-│   └── sumava_zones_2.geojson     # Official zone classifications
-│
-├── maps/                          # Analysis scripts
-│   ├── main.py                    # Main pipeline
-│   ├── spatial_analysis.py        # Suitability analysis
-│   ├── network_layer.py           # Trail network construction
-│   ├── base_map.py                # Base map creation
-│   ├── bike_layer.py              # Trail visualization layers
-│   ├── heatmap.py                 # Density heatmap
-│   ├── loader.py                  # Data loading utilities
-│   └── mtb_planner_map.html       # OUTPUT: Interactive map
-│
-├── preprocessing/
-│   ├── aio_download.py            # Download protected areas
-│   └── strava_data.py             # Download Strava activities
-│
-├── config.py                      # Configuration parameters
-├── requirements.txt               
-└── README.md                      
+├── data/                      # GPS data and boundaries
+│   ├── strava/                # Your ride data
+│   └── sumava_zones_2.geojson # Protected zones
+├── maps/                      # Analysis scripts
+│   ├── main.py                # Run this!
+│   └── mtb_planner.html       # Output map
+├── preprocessing/             # Data download tools
+└── requirements.txt           # Dependencies
 ```
+## Features
 
----
+- ✅ Automated trail network construction
+- ✅ Statistical hotspot detection (Moran's I)
+- ✅ Multi-criteria location ranking
+- ✅ Environmental constraint checking
+- ✅ Interactive web map visualization
 
-## Methodology
+## Methods
 
-### 1. Trail Network Construction
-- **Input:**  overlapping GPS tracks
-- **Method:** Shapely `unary_union` + `linemerge`
-- **Output:** distinct trail segments
+- **Network Building**: Grid-based spatial indexing (1000m cells)
+- **Hotspot Detection**: Local Moran's I analysis
+- **Clustering**: DBSCAN (ε = 2 km)
+- **Scoring**: Weighted by accessibility (30%), usage (30%), clustering (40%)
 
-### 2. Popularity Analysis
-- **Method:** Buffer-based spatial join (100m tolerance)
-- **Result:** Each segment tagged with ride count
 
-### 3. Candidate Identification
-- **Algorithm:** Moran's I local + global
-- **Filtering:** High-traffic segments 
-- **Output:** 1 candidate 
-
-### 4. Accessibility Scoring
-- **Metric:** Trail count/length/traffic within 5km radius
-- **Weights:** Frequency (40%), Traffic (40%), Length (20%)
-
-### 5. Environmental Constraints
-- **Method:** Point-in-polygon spatial join with zone classifications
-- **Penalty:** Zone A (core protection) → Score = 0
-
----
 
 
 

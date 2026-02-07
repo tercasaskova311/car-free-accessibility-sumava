@@ -315,14 +315,14 @@ class LocationAnalyzer:
 
         print("candidates")
         for _, row in results.head(5).iterrows():
-            print(f"\n  {int(row['rank'])}. Location "
+            print(f" {int(row['rank'])}. Location "
                   f"({row.geometry.y:.4f}°N, {row.geometry.x:.4f}°E)")
-            print(f"     Suitability Score:          {row['suitability_score']:.1f}/100")
-            print(f"     Clustering Strength (I):    {row['mean_local_morans_i']:.3f}")
-            print(f"     Trail Access:               {int(row['trail_count'])} segments")
-            print(f"     Trail Length (raw):         {row['trail_length_km']:.1f} km")
-            print(f"     Trail Length (unique):      {row['unique_trail_length_km']:.1f} km")
+            print(f"Suitability Score:{row['suitability_score']:.1f}/100")
+            print(f"Clustering Strength (I):{row['mean_local_morans_i']:.3f}")
+            print(f"Trail Access:  {int(row['trail_count'])} segments")
+            print(f"Trail Length (raw): {row['trail_length_km']:.1f} km")
+            print(f"Trail Length (unique): {row['unique_trail_length_km']:.1f} km")
             overlap = row['trail_length_km'] / row['unique_trail_length_km'] if row['unique_trail_length_km'] > 0 else 1
-            print(f"     Overlap factor:             {overlap:.2f}x")
-            print(f"     Zone: {row['zone_type']}  "
-                  f"{'❌ PROHIBITED' if row['in_prohibited_zone'] else '✓ PERMITTED'}")
+            print(f"Overlap factor: {overlap:.2f}x")
+            print(f"Zone: {row['zone_type']}  "
+                  f"{'PROHIBITED' if row['in_prohibited_zone'] else 'PERMITTED'}")

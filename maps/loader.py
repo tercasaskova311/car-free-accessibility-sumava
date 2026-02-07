@@ -1,3 +1,6 @@
+#load data - study area boundary and strava rides, clean ride names, calculate ride lengths in km
+#ensure matching CRS for spatial operations
+
 import geopandas as gpd
 import pandas as pd
 import sys

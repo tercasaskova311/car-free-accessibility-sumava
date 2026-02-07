@@ -1,3 +1,4 @@
+#heatmap layer - add heatmap of ride density to the map, with configurable parameters for point density, radius, blur, and color gradient
 import folium
 from folium.plugins import HeatMap
 import geopandas as gpd
@@ -13,8 +14,8 @@ from config import Config
 class HeatMapLayer:
     @staticmethod
     def add_heatmap(m, rides):
-        MAX_HEAT_POINTS = 15_000
-        points_per_route = Config.HEATMAP_POINTS_PER_ROUTE  # 30
+        MAX_HEAT_POINTS = 15_000 # Cap total heatmap points to prevent browser overload
+        points_per_route = Config.HEATMAP_POINTS_PER_ROUTE  # 30 - more points for smoother heatmap, fewer for performance
 
         # How many rides do we need to stay under the cap? - max 5000 points
         max_rides = max(1, MAX_HEAT_POINTS // points_per_route)
@@ -26,6 +27,8 @@ class HeatMapLayer:
             rides_sample = rides
 
         heat_data = []
+
+        #ride - interpolate points along the route -heatmap 
         for _, ride in rides_sample.iterrows():
             if ride.geometry is None or ride.geometry.is_empty:
                 continue
