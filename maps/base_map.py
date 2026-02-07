@@ -139,10 +139,6 @@ class BaseLayers:
                             Local Moran's I: <b>{cand.get('mean_local_morans_i', 0):.3f}</b>, 
                             Hotspots of segments: <b>{int(cand.get('hotspot_segments', 0))}</b>
                         </div>
-                        <div style="margin: 2px 0;">
-                            Access: <b>{unique_trail_km:.1f} km</b> km of trails and mtb roads 
-                            ({int(cand['trail_count'])} segments)
-                        </div>
                         <div style="margin: 2px 0; font-size: 9px; color: #7f8c8d;">
                             Zone: <b>{cand.get('zone_type', 'Unknown')}</b> 
                             {'(prohibited)' if prohibited else '(permitted)'}
