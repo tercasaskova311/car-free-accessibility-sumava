@@ -68,7 +68,6 @@ class BaseLayers:
         
         # Network statistics
         total_segments = len(network)
-        total_trail_km = network['distance_km'].groupby(network['segment_id']).first().sum() / 1000  # Sum unique segments
         avg_segment_traffic = network['ride_count'].mean()
         high_traffic_segments = len(network[network['ride_count'] >= Config.TRAFFIC_THRESHOLDS['medium']])
         
@@ -117,10 +116,7 @@ class BaseLayers:
             score = float(cand['suitability_score'])
             prohibited = bool(cand.get('in_prohibited_zone', False))
             color = colors[idx] if idx < len(colors) else '#95a5a6'
-            
-            # Use unique trail length (with fallback)
-            unique_trail_km = float(cand.get('unique_trail_length_km', cand.get('trail_length_km', 0)))
-            
+                        
             # Status icon
             status_icon = "❌" if prohibited else "✅"
             status_color = "#e74c3c" if prohibited else color
@@ -191,9 +187,6 @@ class BaseLayers:
                     <b style="color: #2c3e50; font-size: 13px;">📊 Network Overview</b>
                 </p>
                 <div style="font-size: 11px; line-height: 1.5; color: #34495e;">
-                    <div style="margin: 3px 0;">
-                        • Total network: <strong>{total_trail_km:.1f} km</strong> km of trails across
-                    </div>
                     <div style="margin: 3px 0;">
                         • High-traffic segment: <strong>{high_traffic_segments}</strong>
                         (≥{Config.TRAFFIC_THRESHOLDS['medium']} rides)
