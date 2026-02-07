@@ -94,7 +94,6 @@ def stats(study_area, rides, network, candidates=None):
                 print(f"Local Moran's I:{row.get('mean_local_morans_i', 0):.3f}")
                 print(f"Trail Access (5km radius):")
                 print(f"• Segments:{int(row['trail_count'])}")
-                print(f"• Unique Length:{row['unique_trail_length_km']:.1f} km")
                 print(f"• Total Rides:{int(row['total_rides'])}")
                 print(f"Hotspot Segments:{int(row.get('hotspot_segments', 0))}")
                 print(f"Protected Zone:{row['zone_type']} "
