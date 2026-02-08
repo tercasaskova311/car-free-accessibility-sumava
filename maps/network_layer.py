@@ -16,7 +16,7 @@ import numpy as np
 from rtree import index
 import sys
                        
-class OptimizedNetworkBuilder:
+class NetworkBuilder:
 
     @staticmethod
     def _split_at_intersections_fast(segments, snap_tolerance=5.0):
@@ -190,18 +190,21 @@ class OptimizedNetworkBuilder:
     
     @staticmethod
     def map_rides_to_segments_vectorized(network, rides, buffer_distance=50):
-        #VECTORIZED (spatial join) => 
-        #take the midpoints of rides and do a spatial join to find nearest segments within buffer distance.
-        #it is not super precise but very fast.
-        #buffering = capture most rides.
-        #for longer riders, midpoint may not be ideal but is a good compromise to process 3k rides quickly.
-        #another option is to sample multiple points along each ride and join those - this would be a later advancement
-
+        """
+        VECTORIZED (spatial join) => 
+        take the midpoints of rides and do a spatial join to find nearest segments within buffer distance.
+        it is not super precise but very fast.
+        buffering = capture most rides.
+        for longer riders, midpoint may not be ideal but is a good compromise to process 3k rides quickly.
+        another option is to sample multiple points along each ride and join those - this would be a later advancement
+        """
+        
         start = time.time()
         network_proj = network.to_crs('EPSG:32633')
         rides_proj = rides.to_crs('EPSG:32633')
         
-        rides_proj['midpoint'] = rides_proj.geometry.interpolate(0.5, normalized=True) # Calculate ride midpoints
+        # Calculate ride midpoints
+        rides_proj['midpoint'] = rides_proj.geometry.interpolate(0.5, normalized=True)
 
         # Create temporary GeoDataFrame with midpoints
         rides_points = rides_proj.copy()
@@ -212,6 +215,10 @@ class OptimizedNetworkBuilder:
         rides_points['activity_id'] = rides_proj.get('activity_id', rides_proj.index)
         rides_points['distance_km'] = rides_proj.get('distance_km', 0)
         
+        # Ensure network has segment_id column (create if missing)
+        if 'segment_id' not in network_proj.columns:
+            network_proj['segment_id'] = network_proj.index
+        
         # Spatial join (this is vectorized!)
         joined = gpd.sjoin_nearest(
             rides_points[['activity_id', 'distance_km', 'midpoint']],
@@ -220,7 +227,7 @@ class OptimizedNetworkBuilder:
             distance_col='dist_to_segment'
         )
         
-        # Group by segment and aggregate rides - FIXED!
+        # Group by segment and aggregate rides
         ride_counts = joined.groupby('index_right').agg(
             ride_count=('activity_id', 'count'),
             activity_ids=('activity_id', list),
@@ -236,15 +243,19 @@ class OptimizedNetworkBuilder:
             axis=1
         )
         
-        # Merge back to network
+        # Reset network_proj index to ensure we can merge properly
+        network_proj = network_proj.reset_index(drop=True)
+        
+        # Merge ride counts back to network
+        # ride_counts is indexed by the original network_proj index (index_right from sjoin)
         network_proj = network_proj.merge(
-            ride_counts[['ride_count', 'rides']], 
-            left_index=True, 
-            right_index=True, 
+            ride_counts[['ride_count', 'rides']],
+            left_index=True,
+            right_index=True,
             how='left'
         )
         
-        # Fill NaN values
+        # Fill NaN values for segments with no rides
         network_proj['ride_count'] = network_proj['ride_count'].fillna(0).astype(int)
         network_proj['rides'] = network_proj['rides'].apply(lambda x: x if isinstance(x, list) else [])
         
@@ -255,6 +266,10 @@ class OptimizedNetworkBuilder:
         print(f"mapping rate: {len(rides) / elapsed:.0f} rides/second")
         
         return network_proj.to_crs(network.crs)
+    def save_network(network, path):
+        network.to_file(path, driver='GPKG')
+        print(f"Network saved to {path}")
+                
 
         
         

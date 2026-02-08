@@ -13,7 +13,7 @@ STRAVA_CLIENT_SECRET = os.getenv("STRAVA_CLIENT_SECRET")
 CODE = os.getenv("CODE")
 
 if not STRAVA_CLIENT_ID or not STRAVA_CLIENT_SECRET or not CODE:
-    raise RuntimeError("❌ STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET not set")
+    raise RuntimeError("STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET not set")
 
 
 # ============================================
@@ -46,7 +46,7 @@ def refresh_token_if_needed(token_data):
     if token_data["expires_at"] > time.time():
         return token_data  # still valid
 
-    print("🔄 Token expired, refreshing...")
+    print(" Token expired, refreshing...")
 
     client = Client()
     new_token = client.refresh_access_token(
@@ -58,7 +58,7 @@ def refresh_token_if_needed(token_data):
     with open(TOKEN_FILE, "w") as f:
         json.dump(new_token, f, indent=2)
 
-    print("✅ Token refreshed")
+    print("Token refreshed")
     return new_token
 
 def decode_polyline_to_linestring(polyline_str):
@@ -87,13 +87,13 @@ def get_start_point(geom):
 def save_routes_geojson(gdf, path):
     if len(gdf) > 0:
         gdf.to_file(path, driver='GeoJSON')
-        print(f"💾 Saved {len(gdf)} records → {path}")
+        print(f"Saved {len(gdf)} records → {path}")
 
 # ============================================
 # MAIN DOWNLOAD FUNCTION
 # ============================================
 def download_strava_routes_incremental():
-    print("\n🔹 Loading Strava token...")
+    print("Loading Strava token...")
 
     token_data = load_token()
     token_data = refresh_token_if_needed(token_data)
@@ -112,7 +112,7 @@ def download_strava_routes_incremental():
         routes_gdf = gpd.read_file(OUTPUT_GEOJSON)
         processed_ids = set(routes_gdf['activity_id'])
         routes_list = routes_gdf.to_dict('records')
-        print(f"🔄 Resuming, {len(routes_list)} activities already saved")
+        print(f"Resuming, {len(routes_list)} activities already saved")
     else:
         routes_list = []
         processed_ids = set()
@@ -132,10 +132,10 @@ def download_strava_routes_incremental():
                 break
             except Exception as e:
                 wait = 2 ** attempt
-                print(f"⚠️ Error downloading activity {activity.id}: {e}. Retrying in {wait}s...")
+                print(f" Error downloading activity {activity.id}: {e}. Retrying in {wait}s...")
                 time.sleep(wait)
         else:
-            print(f"❌ Failed to download activity {activity.id}, skipping...")
+            print(f" Failed to download activity {activity.id}, skipping...")
             continue
 
         geom = decode_polyline_to_linestring(
@@ -181,12 +181,9 @@ def download_strava_routes_incremental():
     start_points['geometry'] = start_points['geometry'].apply(get_start_point)
     save_routes_geojson(start_points, START_POINTS_GEOJSON)
 
-    print(f"\n🎉 Done! Total new activities processed this run: {count}")
+    print(f" Done! Total new activities processed this run: {count}")
     return gpd.read_file(OUTPUT_GEOJSON)
 
-# ============================================
-# RUN
-# ============================================
 
 if __name__ == "__main__":
     download_strava_routes_incremental()

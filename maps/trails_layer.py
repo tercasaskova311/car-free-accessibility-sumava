@@ -135,7 +135,6 @@ class TrailsLayers:
             popup_html = f"""
             <b>Candidate #{rank}</b><br>
             Score: {score:.1f}/100<br>
-            Trails (unique): {row['unique_trail_length_km']:.1f} km<br>
             Total rides: {int(row['total_rides'])}<br>
             Zone: {row['zone_type']}
             """

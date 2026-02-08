@@ -137,7 +137,7 @@ class LocationAnalyzer:
         coords = np.column_stack([centroids.x, centroids.y])
 
         #group segments together (within 2km)
-        db = DBSCAN(eps=2000, min_samples=2).fit(coords)
+        db = DBSCAN(eps=5000, min_samples=2).fit(coords)
         hotspots['spatial_group'] = db.labels_
 
         candidates = []
