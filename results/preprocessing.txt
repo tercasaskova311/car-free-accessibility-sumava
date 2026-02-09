@@ -1,0 +1,86 @@
+============================================================
+TEMPORAL DISTRIBUTION
+============================================================
+
+Rides per year:
+year
+2017    2821
+2018    2356
+2019    2072
+2020    2124
+2021     212
+
+Rides per season:
+season
+Summer    4053
+Spring    3056
+Fall      1484
+Winter     992
+
+Rides per day of week:
+  Monday: 1234
+  Tuesday: 1865
+  Wednesday: 1846
+  Thursday: 1357
+  Friday: 983
+  Saturday: 1073
+  Sunday: 1227
+
+============================================================
+RIDE CHARACTERISTICS
+============================================================
+
+Distance statistics:
+  Mean: 37.4 km
+  Median: 29.5 km
+  Std dev: 23.2 km
+  Range: 0.1 - 151.0 km
+
+Elevation gain statistics:
+  Mean: 910 m
+  Median: 830 m
+  Std dev: 494 m
+  Range: 0 - 3818 m
+
+Climbing intensity (elevation gain per km):
+  Mean: 26.2 m/km
+  Median: 25.4 m/km
+
+Ride difficulty distribution:
+difficulty
+Easy (<20 m/km)          2562
+Moderate (20-40 m/km)    6626
+Hard (40-60 m/km)         295
+Very Hard (>60 m/km)       84
+
+ACTIVITY PATTERNS
+
+Cumulative statistics (2017-2024):
+  Total rides: 9,585
+  Total distance: 358,381 km
+  Total elevation: 8,724,274 m
+  Study period: 1588 days (4.4 years)
+  Active months: 50 out of 52 possible
+  Average rides per month: 191.7
+  Average distance per ride: 37.4 km
+
+Most active month: 2017-07 (558 rides)
+
+============================================================
+DATA QUALITY METRICS
+============================================================
+
+Potential anomalies:
+  Very short rides (<5 km): 18 (0.2%)
+  Very long rides (>50 km): 2273 (23.7%)
+  Low elevation (<100 m): 46 (0.5%)
+  High elevation (>1500 m): 1120 (11.7%)
+
+Data completeness:
+  Missing distance values: 0
+  Missing elevation values: 0
+  Complete records: 9585 (100.0%)
+
+
+
+
